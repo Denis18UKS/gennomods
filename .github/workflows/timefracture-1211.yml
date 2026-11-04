@@ -1,0 +1,49 @@
+name: TimeFracture NeoForge 1.21.1 FIX
+on:
+  push:
+    branches: [timefracture-neoforge-1211-fix]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build TimeFracture 1.21.1
+        run: ./gradlew -p TimeFractureNeoForge1211 --no-daemon clean build --stacktrace
+      - name: Build TimeFractureFX 1.21.1
+        run: ./gradlew -p TimeFractureFXNeoForge1211 --no-daemon clean build --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: TimeFracture-NeoForge-1.21.1-FIX
+          path: |
+            TimeFractureNeoForge1211/build/libs/*.jar
+            TimeFractureFXNeoForge1211/build/libs/*.jar
+          if-no-files-found: error
+      - name: Package sources
+        if: success()
+        run: |
+          mkdir -p packages/TimeFracture-NeoForge-1.21.1 packages/TimeFractureFX-NeoForge-1.21.1
+          cp -a TimeFractureNeoForge1211/. packages/TimeFracture-NeoForge-1.21.1/
+          cp -a TimeFractureFXNeoForge1211/. packages/TimeFractureFX-NeoForge-1.21.1/
+          for folder in packages/TimeFracture-NeoForge-1.21.1 packages/TimeFractureFX-NeoForge-1.21.1; do
+            cp gradlew gradlew.bat "$folder/"
+            cp -a gradle "$folder/"
+            find "$folder" -type d \( -name build -o -name .gradle \) -prune -exec rm -rf '{}' +
+          done
+          cd packages
+          zip -qr ../TimeFracture-Source-NeoForge-1.21.1.zip TimeFracture-NeoForge-1.21.1
+          zip -qr ../TimeFractureFX-Source-NeoForge-1.21.1.zip TimeFractureFX-NeoForge-1.21.1
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: TimeFracture-NeoForge-1.21.1-SOURCES
+          path: |
+            TimeFracture-Source-NeoForge-1.21.1.zip
+            TimeFractureFX-Source-NeoForge-1.21.1.zip
+          if-no-files-found: error

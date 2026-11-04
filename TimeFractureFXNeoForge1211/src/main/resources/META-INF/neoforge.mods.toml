@@ -1,0 +1,20 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="timefracturefx"
+version="0.3.0-alpha"
+displayName="TimeFractureFX"
+description='''NeoForge 1.21.1 ALPHA. Local client-only particle 3D preview; not GLSL and not live dimension view.'''
+[[dependencies.timefracturefx]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.timefracturefx]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
