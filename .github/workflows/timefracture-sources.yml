@@ -1,0 +1,31 @@
+name: TimeFracture source archives
+on:
+  push:
+    branches: [timefracture-neoforge-1201]
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create standalone source archives
+        run: |
+          mkdir -p packages/TimeFracture-NeoForge packages/TimeFractureFX-NeoForge
+          cp -a TimeFractureNeoForge/. packages/TimeFracture-NeoForge/
+          cp -a TimeFractureFXNeoForge/. packages/TimeFractureFX-NeoForge/
+          for folder in packages/TimeFracture-NeoForge packages/TimeFractureFX-NeoForge; do
+            cp gradlew gradlew.bat "$folder/"
+            cp -a gradle "$folder/"
+            find "$folder" -name build -type d -prune -exec rm -rf {} +
+            find "$folder" -name .gradle -type d -prune -exec rm -rf {} +
+          done
+          cd packages
+          zip -qr ../TimeFracture-Source-NeoForge-1.20.1.zip TimeFracture-NeoForge
+          zip -qr ../TimeFractureFX-Source-NeoForge-1.20.1.zip TimeFractureFX-NeoForge
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TimeFracture-NeoForge-Sources
+          path: |
+            TimeFracture-Source-NeoForge-1.20.1.zip
+            TimeFractureFX-Source-NeoForge-1.20.1.zip
+          if-no-files-found: error
