@@ -2,11 +2,11 @@ package dev.timefracturefx;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.DistExecutor;
 
-@Mod("timefracturefx")
+/** Client-side NeoForge 1.21.1 FX alpha. */
+@Mod(value = "timefracturefx", dist = Dist.CLIENT)
 public final class TimeFractureFXMod {
     public TimeFractureFXMod() {
-        DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> FxClient::initialize);
+        FxClient.initialize();
     }
 }
