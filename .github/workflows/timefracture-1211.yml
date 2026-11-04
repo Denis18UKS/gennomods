@@ -1,7 +1,7 @@
-name: TimeFractureFX 3D Shader Rendering 1.21.1
+name: TimeFractureFX Geometry Repair 1.21.1
 on:
   push:
-    branches: [timefracturefx-worldspace-shaders-1211]
+    branches: [timefracturefx-geometry-repair-1211]
   workflow_dispatch:
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: TimeFracture-FX-3D-Shader-1.21.1
+          name: TimeFracture-FX-Geometry-Repair-1.21.1
           path: |
             TimeFractureNeoForge1211/build/libs/*.jar
             TimeFractureFXNeoForge1211/build/libs/*.jar
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: TimeFracture-FX-3D-Shader-1.21.1-SOURCES
+          name: TimeFracture-FX-Geometry-Repair-1.21.1-SOURCES
           path: |
             TimeFracture-Source-NeoForge-1.21.1.zip
             TimeFractureFX-Source-NeoForge-1.21.1.zip
