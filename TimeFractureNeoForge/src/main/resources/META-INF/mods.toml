@@ -1,0 +1,20 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+[[mods]]
+modId="timefracture"
+version="0.2.0-alpha"
+displayName="TimeFracture"
+description='''Experimental NeoForge 1.20.1 alpha. NOT a full timeline simulation.'''
+[[dependencies.timefracture]]
+modId="forge"
+mandatory=true
+versionRange="[47.1,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.timefracture]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.20.2)"
+ordering="NONE"
+side="BOTH"

@@ -1,25 +1,27 @@
-name: Build
-
-on: [push, pull_request]
-
+name: TimeFracture NeoForge 1.20.1
+on:
+  push:
+    branches: [timefracture-neoforge-1201]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
-        with:
+          distribution: temurin
           java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build with Gradle
-        run: ./gradlew build
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build TimeFracture
+        run: ./gradlew -p TimeFractureNeoForge --no-daemon clean build --stacktrace
+      - name: Build TimeFractureFX
+        run: ./gradlew -p TimeFractureFXNeoForge --no-daemon clean build --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: TimeFracture-NeoForge-1.20.1
+          path: |
+            TimeFractureNeoForge/build/libs/*.jar
+            TimeFractureFXNeoForge/build/libs/*.jar
+          if-no-files-found: error
