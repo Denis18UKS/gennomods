@@ -3,9 +3,9 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="timefracturefx"
-version="0.3.0-alpha"
+version="0.4.0-alpha"
 displayName="TimeFractureFX"
-description='''NeoForge 1.21.1 ALPHA. Local client-only particle 3D preview; not GLSL and not live dimension view.'''
+description='''NeoForge 1.21.1 ALPHA. Runtime world-space 3D shader portals and rifts. Windows show procedural alternate landscapes; not live dimensions.'''
 [[dependencies.timefracturefx]]
 modId="neoforge"
 type="required"
