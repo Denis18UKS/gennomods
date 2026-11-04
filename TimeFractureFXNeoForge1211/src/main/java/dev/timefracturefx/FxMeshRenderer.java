@@ -128,9 +128,9 @@ public final class FxMeshRenderer {
         BufferBuilder b=begin();
         double base=center.y;
         double mouthRadius=30.0*scale;
-        // The filled disc replaces the visible sky INSIDE the world-space mouth.
-        // The GLSL code itself draws a perspective vortex with its own "depth".
-        portalCap(b,m,center,base+1.0,mouthRadius,1f,.97f);
+        // The filled far cap and physical tunnel walls together occlude the sky INSIDE the mouth.
+        // The world-space wall geometry supplies actual parallax and 3D depth; GLSL adds internal energy.
+        portalCap(b,m,center,base+38.0,mouthRadius*.29,1f,1f);
 
         // Tapered 3D tunnel: continuous physical wall that can be approached and
         // viewed from underneath or from the side, rather than a 2D overlay.
