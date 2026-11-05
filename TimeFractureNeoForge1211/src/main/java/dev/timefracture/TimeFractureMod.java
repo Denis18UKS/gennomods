@@ -16,6 +16,15 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.neoforged.neoforge.registries.DeferredBlock;
+import net.neoforged.neoforge.registries.DeferredHolder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import dev.timefracture.create.ChronalCoreBlock;
+import dev.timefracture.create.ChronalCoreBlockEntity;
 import java.nio.file.*;
 import java.util.*;
 
@@ -24,8 +33,19 @@ public class TimeFractureMod {
   static Ledger L=new Ledger(Path.of("config","timefracture","branches.tsv"));
   static PocketWorld P;
   static AnomalyManager A;
+  public static final DeferredRegister.Blocks BLOCKS=DeferredRegister.createBlocks("timefracture");
+  public static final DeferredBlock<ChronalCoreBlock> CHRONAL_CORE =
+      BLOCKS.register("chronal_core",()->new ChronalCoreBlock(
+          BlockBehaviour.Properties.of().strength(5f,8f).requiresCorrectToolForDrops()
+              .sound(SoundType.METAL).lightLevel(s->7)));
+  public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
+      DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE,"timefracture");
+  public static final DeferredHolder<BlockEntityType<?>,BlockEntityType<ChronalCoreBlockEntity>> CHRONAL_CORE_BE =
+      BLOCK_ENTITIES.register("chronal_core",()->
+          BlockEntityType.Builder.of(ChronalCoreBlockEntity::new,CHRONAL_CORE.get()).build(null));
   static final DeferredRegister.Items ITEMS=DeferredRegister.createItems("timefracture");
   static {
+    ITEMS.registerSimpleBlockItem(CHRONAL_CORE);
     ITEMS.register("time_artifact",()->new Item(new Item.Properties().stacksTo(1)){
       @Override public InteractionResultHolder<ItemStack> use(Level world,Player user,InteractionHand hand){
         if(world.isClientSide) TimeArtifactClient.open();
@@ -34,6 +54,8 @@ public class TimeFractureMod {
     });
   }
   public TimeFractureMod(IEventBus bus){
+    BLOCKS.register(bus);
+    BLOCK_ENTITIES.register(bus);
     ITEMS.register(bus);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::commands);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::death);
@@ -42,7 +64,11 @@ public class TimeFractureMod {
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::importantBlock);
     NeoForge.EVENT_BUS.addListener(TimeEchoes::tick);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::randomTravelTick);
+    NeoForge.EVENT_BUS.addListener(ConvergenceService::tick);
   }
+  public static boolean canConverge() { return P!=null && P.count()>=2 && !L.frozen; }
+  public static int activePocketCount() { return P==null?0:P.count(); }
+  public static boolean isFrozen() {return L.frozen;}
   static UUID actor(net.minecraft.commands.CommandSourceStack s){
     return s.getEntity() instanceof ServerPlayer p ? p.getUUID() : new UUID(0,0);
   }
@@ -104,6 +130,10 @@ public class TimeFractureMod {
       return msg(c.getSource(),A.travel(p,true)?"§5Аномалия создана":"§cНужна хотя бы одна доступная линия");
     }));
     root.then(anomalies);
+    root.then(Commands.literal("converge")
+        .then(Commands.literal("status").executes(c->msg(c.getSource(),
+            "§bОбъединение запускается ТОЛЬКО от механизма Create, а не командой. "+
+            ConvergenceService.status()))));
     root.then(Commands.literal("pockets").executes(c->msg(c.getSource(),
       "§dЛокальных временных миров: "+(P==null?0:P.count())+" / "+PocketWorld.MAX)));
     root.then(Commands.literal("tree").executes(c->{
@@ -127,6 +157,27 @@ public class TimeFractureMod {
     admin.then(Commands.literal("revoke").then(Commands.argument("player",EntityArgument.player()).executes(c->{
       var p=EntityArgument.getPlayer(c,"player");L.devs.remove(p.getUUID());L.save();return msg(c.getSource(),"DEV-: "+p.getName().getString());
     })));
+    var rollback=Commands.literal("rollback");
+    rollback.then(Commands.literal("preview").executes(c->msg(c.getSource(),
+        "§eПолный откат всех событий требует полного снимка сервера ДО первого раскола. "+
+        "В этой экспериментальной сборке сохранены локальные области, а не полные снимки миров. "+
+        "Нельзя безопасно восстановить умерших существ, инвентари и механизмы без такого снимка.")));
+    rollback.then(Commands.literal("origin").executes(c->msg(c.getSource(),
+        "§cDEV-откат заблокирован: отсутствует проверенный полный доснимочный backup мира. "+
+        "Ручное восстановление — только на остановленном сервере из резервной копии.")));
+    rollback.then(Commands.literal("archive-pockets").then(Commands.literal("confirm").executes(c->{
+        if(P==null)return msg(c.getSource(),"§cНет реестра временных областей.");
+        if(ConvergenceService.running())return msg(c.getSource(),"§cСначала завершите объединение.");
+        for(ServerPlayer p:c.getSource().getServer().getPlayerList().getPlayers()){
+            try{P.leave(p);}catch(RuntimeException ignored){}
+        }
+        P.archiveAll();
+        L.frozen=true;
+        L.save();
+        return msg(c.getSource(),"§eВсе карманные ветви архивированы. "+
+            "Оригинальный мир не удалён, но события до раскола НЕ восстановлены.");
+    })));
+    admin.then(rollback);
     root.then(admin);
     e.getDispatcher().register(root);
   }

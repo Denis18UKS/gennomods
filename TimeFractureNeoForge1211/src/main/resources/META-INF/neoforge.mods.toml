@@ -3,9 +3,9 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="timefracture"
-version="0.6.0-experimental"
+version="0.7.0-create-convergence"
 displayName="TimeFracture"
-description='''NeoForge 1.21.1 ALPHA. Experimental localized independently saved branch pockets, online-player artifact GUI, NPC echo proxies and protected paradox rules. Not complete infinite timelines.'''
+description='''NeoForge 1.21.1 ALPHA. Create-powered kinetic convergence core. Requires max server RPM to merge local branch pockets; archive-only DEV rollback, not full world restoration.'''
 [[dependencies.timefracture]]
 modId="neoforge"
 type="required"
@@ -17,4 +17,11 @@ modId="minecraft"
 type="required"
 versionRange="[1.21.1,1.21.2)"
 ordering="NONE"
+side="BOTH"
+
+[[dependencies.timefracture]]
+modId="create"
+type="required"
+versionRange="[6.0.10,6.1.0)"
+ordering="AFTER"
 side="BOTH"

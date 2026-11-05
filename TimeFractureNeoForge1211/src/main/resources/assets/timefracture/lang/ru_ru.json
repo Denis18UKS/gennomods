@@ -1,1 +1,4 @@
-{"item.timefracture.time_artifact":"Артефакт временных линий"}
+{
+  "item.timefracture.time_artifact": "Артефакт временных линий",
+  "block.timefracture.chronal_core": "Хроноконденсатор Create"
+}

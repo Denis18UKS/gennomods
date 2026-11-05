@@ -53,7 +53,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
             sp.sendSystemMessage(Component.literal("§eХроноконденсатор уже заряжается. " + status()));
             return false;
         }
-        if (TimeFractureMod.P == null || TimeFractureMod.P.count() < 2) {
+        if (TimeFractureMod.activePocketCount() < 2) {
             sp.sendSystemMessage(Component.literal("§cДля объединения нужно как минимум две сохранённые временные ветви."));
             return false;
         }
@@ -61,7 +61,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
             sp.sendSystemMessage(Component.literal("§cМультиструктура не собрана: 4 латунных корпуса Create по сторонам, аметист над ядром и вертикальный Create-вал под ним."));
             return false;
         }
-        if (TimeFractureMod.L.frozen) {
+        if (TimeFractureMod.isFrozen()) {
             sp.sendSystemMessage(Component.literal("§cВремя заморожено. Сначала восстанови баланс."));
             return false;
         }
