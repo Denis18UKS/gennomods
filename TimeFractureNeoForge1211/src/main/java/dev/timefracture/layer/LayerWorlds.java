@@ -112,8 +112,13 @@ public final class LayerWorlds {
         String kind=kindOf(player.level().dimension().location().toString());
         String sourceDimension=player.level().dimension().location().toString();
         if(parent!=null && !parent.equals("-")){
-            if(!ready.contains(parent))
-                throw new IllegalStateException("Сначала дождись готовности родительской линии "+parent);
+            if(!ready.contains(parent)){
+                LayerCatalog.Layer ancestor=catalog.find(parent);
+                if(ancestor==null)throw new IllegalStateException("Родительская линия не найдена: "+parent);
+                // Queue ancestors first in a strictly serial order. No multiple
+                // dimensions/chunk snapshots are copied concurrently.
+                queue(player,parent,ancestor.parent());
+            }
             sourceDimension=destination(parent,kind);
         }
         if(getLevel(player.getServer(),destination(id,kind))==null)
