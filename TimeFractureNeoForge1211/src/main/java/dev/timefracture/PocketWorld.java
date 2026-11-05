@@ -33,15 +33,40 @@ public final class PocketWorld {
     public record ReturnPoint(String dimension,double x,double y,double z,float yaw,float pitch) {}
     private final Path file;
     private final Map<String,Pocket> pockets=new LinkedHashMap<>();
+    private final Set<String> archived=new HashSet<>();
+    private final Set<String> pending=new HashSet<>();
     private final Map<UUID,ReturnPoint> returns=new HashMap<>();
     private int index=0;
 
     public PocketWorld(Path file){this.file=file;load();}
-    public synchronized int count(){return pockets.size();}
-    public synchronized Pocket get(String id){return pockets.get(id);}
-    public synchronized Collection<Pocket> list(){return List.copyOf(pockets.values());}
+    public synchronized int count(){return (int)pockets.keySet().stream().filter(x->!archived.contains(x)&&!pending.contains(x)).count();}
+    public synchronized Pocket get(String id){return archived.contains(id)||pending.contains(id)?null:pockets.get(id);}
+    public synchronized Collection<Pocket> list(){
+        return pockets.values().stream().filter(p->!archived.contains(p.id())&&!pending.contains(p.id())).toList();
+    }
+    public synchronized void markPending(String id) {
+        if(!pockets.containsKey(id))throw new IllegalArgumentException("Нет линии "+id);
+        pending.add(id);save();
+    }
+    public synchronized void archiveAllExcept(Collection<String> winnerIds){
+        for(String id:pockets.keySet())
+            if(!winnerIds.contains(id))archived.add(id);
+        for(String id:winnerIds){pending.remove(id);archived.remove(id);}
+        save();
+    }
+    public synchronized int archivedCount(){return archived.size();}
+    public synchronized int pendingCount(){return pending.size();}
+    public synchronized void restoreArchived(){
+        archived.clear();
+        save();
+    }
+    public synchronized void archiveAll(){
+        archived.addAll(pockets.keySet());
+        save();
+    }
     public synchronized boolean isInPocket(ServerPlayer player) {
         for(Pocket p:pockets.values()) {
+            if(archived.contains(p.id())||pending.contains(p.id()))continue;
             if(!player.level().dimension().location().toString().equals(p.dimension))continue;
             if(Math.abs(player.getX()-p.x)<RADIUS+3 && Math.abs(player.getZ()-p.z)<RADIUS+3
               && Math.abs(player.getY()-p.y)<HEIGHT+5) return true;
@@ -51,13 +76,13 @@ public final class PocketWorld {
 
     public synchronized Pocket create(MinecraftServer server,String id,
                                       ServerPlayer sourcePlayer,String parent) {
-        if(pockets.containsKey(id))return pockets.get(id);
+        if(pockets.containsKey(id))return get(id);
         if(pockets.size()>=MAX)throw new IllegalStateException("Лимит локальных ветвей: "+MAX);
         if(sourcePlayer==null)throw new IllegalStateException("Реальный игрок не в сети");
         ServerLevel dimension=sourcePlayer.serverLevel();
         BlockPos source=sourcePlayer.blockPosition();
         if(parent!=null && !parent.equals("-")) {
-            Pocket prev=pockets.get(parent);
+            Pocket prev=get(parent);
             if(prev==null)throw new IllegalStateException("У родителя "+parent+" отсутствует снимок");
             dimension=level(server,prev.dimension);
             if(dimension==null)throw new IllegalStateException("Недоступно измерение родителя");
@@ -99,7 +124,7 @@ public final class PocketWorld {
     }
 
     public synchronized void enter(ServerPlayer visitor,String id){
-        Pocket p=pockets.get(id);
+        Pocket p=get(id);
         if(p==null)throw new IllegalArgumentException("У линии "+id+" нет доступного локального снимка");
         MinecraftServer server=visitor.getServer();
         if(server==null)throw new IllegalStateException("Сервер недоступен");
@@ -129,6 +154,7 @@ public final class PocketWorld {
 
     public synchronized String closest(ServerPlayer p){
         for(Pocket cell:pockets.values()){
+            if(archived.contains(cell.id())||pending.contains(cell.id()))continue;
             if(!p.level().dimension().location().toString().equals(cell.dimension))continue;
             if(Math.abs(p.getX()-cell.x)<RADIUS+3&&Math.abs(p.getZ()-cell.z)<RADIUS+3
                 &&Math.abs(p.getY()-cell.y)<HEIGHT+5)return cell.id;
@@ -157,6 +183,8 @@ public final class PocketWorld {
                 lines.add("P\t"+p.id+"\t"+p.dimension+"\t"+p.x+"\t"+p.y+"\t"+p.z+
                           "\t"+p.subject+"\t"+enc(p.name));
             }
+            for(String id:archived)lines.add("A\t"+id);
+            for(String id:pending)lines.add("X\t"+id);
             for(var entry:returns.entrySet()){
                 ReturnPoint r=entry.getValue();
                 lines.add("R\t"+entry.getKey()+"\t"+r.dimension+"\t"+r.x+"\t"+r.y+
@@ -179,6 +207,8 @@ public final class PocketWorld {
                     case "P"->{Pocket p=new Pocket(a[1],a[2],Integer.parseInt(a[3]),
                         Integer.parseInt(a[4]),Integer.parseInt(a[5]),UUID.fromString(a[6]),dec(a[7]));
                         pockets.put(p.id,p);}
+                    case "A"->archived.add(a[1]);
+                    case "X"->pending.add(a[1]);
                     case "R"->returns.put(UUID.fromString(a[1]),new ReturnPoint(a[2],
                         Double.parseDouble(a[3]),Double.parseDouble(a[4]),Double.parseDouble(a[5]),
                         Float.parseFloat(a[6]),Float.parseFloat(a[7])));
