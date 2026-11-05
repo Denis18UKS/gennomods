@@ -7,9 +7,15 @@
     "BPB"
   ],
   "key": {
-    "B": "create:brass_casing",
-    "P": "create:precision_mechanism",
-    "C": "minecraft:clock"
+    "B": {
+      "item": "create:brass_casing"
+    },
+    "P": {
+      "item": "create:precision_mechanism"
+    },
+    "C": {
+      "item": "minecraft:clock"
+    }
   },
   "result": {
     "id": "timefracture:chronal_core",

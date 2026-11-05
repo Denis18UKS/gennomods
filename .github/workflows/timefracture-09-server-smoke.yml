@@ -19,6 +19,7 @@ jobs:
           mkdir -p TimeFractureNeoForge1211/run run
           echo eula=true > TimeFractureNeoForge1211/run/eula.txt
           echo eula=true > run/eula.txt
+          printf 'online-mode=false\n' > TimeFractureNeoForge1211/run/server.properties
       - name: Boot NeoForge, validate registered dimensions
         shell: bash
         run: |
@@ -26,6 +27,11 @@ jobs:
           timeout --signal=TERM --kill-after=10s 140s ./gradlew -p TimeFractureNeoForge1211 runServer --no-daemon --console=plain > TimeFractureNeoForge1211/server-smoke.log 2>&1
           EXIT=$?
           set -e
+          if grep -q 'Parsing error loading recipe timefracture:' TimeFractureNeoForge1211/server-smoke.log; then
+            echo 'TIMEFRACTURE_RECIPE_PARSE_FAILED'
+            grep -A12 'Parsing error loading recipe timefracture:' TimeFractureNeoForge1211/server-smoke.log
+            exit 1
+          fi
           if grep -E 'Done \(|For help, type' TimeFractureNeoForge1211/server-smoke.log; then
             echo SERVER_BOOT_OK
           else
