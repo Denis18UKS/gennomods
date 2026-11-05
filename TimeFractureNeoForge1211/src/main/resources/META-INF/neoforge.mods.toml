@@ -3,9 +3,9 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="timefracture"
-version="0.3.0-alpha"
+version="0.6.0-experimental"
 displayName="TimeFracture"
-description='''NeoForge 1.21.1 ALPHA. Server timeline event ledger and permission-gated metadata controls; independent worlds and GUI not yet implemented.'''
+description='''NeoForge 1.21.1 ALPHA. Experimental localized independently saved branch pockets, online-player artifact GUI, NPC echo proxies and protected paradox rules. Not complete infinite timelines.'''
 [[dependencies.timefracture]]
 modId="neoforge"
 type="required"

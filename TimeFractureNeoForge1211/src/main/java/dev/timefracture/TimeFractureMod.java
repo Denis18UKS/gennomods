@@ -21,12 +21,13 @@ import java.util.*;
 
 @Mod("timefracture")
 public class TimeFractureMod {
-  static final Ledger L=new Ledger(Path.of("config","timefracture","branches.tsv"));
+  static Ledger L=new Ledger(Path.of("config","timefracture","branches.tsv"));
+  static PocketWorld P;
   static final DeferredRegister.Items ITEMS=DeferredRegister.createItems("timefracture");
   static {
     ITEMS.register("time_artifact",()->new Item(new Item.Properties().stacksTo(1)){
       @Override public InteractionResultHolder<ItemStack> use(Level world,Player user,InteractionHand hand){
-        if(!world.isClientSide)user.sendSystemMessage(Component.literal("§dTimeFracture ALPHA: /timefracture players | focus <player> | branch <parent> | tree"));
+        if(world.isClientSide) TimeArtifactClient.open();
         return InteractionResultHolder.sidedSuccess(user.getItemInHand(hand),world.isClientSide);
       }
     });
@@ -35,6 +36,10 @@ public class TimeFractureMod {
     ITEMS.register(bus);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::commands);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::death);
+    NeoForge.EVENT_BUS.addListener(TimeFractureMod::serverStarted);
+    NeoForge.EVENT_BUS.addListener(TimeFractureMod::dimensionChanged);
+    NeoForge.EVENT_BUS.addListener(TimeFractureMod::importantBlock);
+    NeoForge.EVENT_BUS.addListener(TimeEchoes::tick);
   }
   static UUID actor(net.minecraft.commands.CommandSourceStack s){
     return s.getEntity() instanceof ServerPlayer p ? p.getUUID() : new UUID(0,0);
@@ -53,13 +58,36 @@ public class TimeFractureMod {
       var f=L.focus.get(actor(c.getSource()));
       if(f==null)return msg(c.getSource(),"§cВыбери реального онлайн-игрока через focus.");
       if(c.getSource().getServer().getPlayerList().getPlayer(f.id)==null)return msg(c.getSource(),"§cЦелевой игрок офлайн.");
-      try {var b=L.add(f.id,f.name,StringArgumentType.getString(c,"parent"),"manual");
-        return msg(c.getSource(),"§aЗапись линии "+b.id+" создана (не копия мира).");
+      try {
+        String parent=StringArgumentType.getString(c,"parent");
+        if(P==null)throw new IllegalStateException("Менеджер ветвей ещё не загрузился");
+        if(L.frozen)throw new IllegalStateException("Ветвления заморожены");
+        if(parent!=null&&!parent.equals("-")&&P.get(parent)==null)
+            throw new IllegalArgumentException("Родительская линия не имеет снимка: "+parent);
+        var b=L.add(f.id,f.name,parent,"manual");
+        var pocket=P.create(c.getSource().getServer(),b.id, c.getSource().getServer().getPlayerList().getPlayer(f.id),parent);
+        var world=c.getSource().getServer().getLevel(net.minecraft.resources.ResourceKey.create(
+            net.minecraft.core.registries.Registries.DIMENSION,
+            net.minecraft.resources.ResourceLocation.parse(pocket.dimension())));
+        if(world!=null)TimeEchoes.create(world,pocket,P.count());
+        return msg(c.getSource(),"§aВетвь "+b.id+" готова: отдельная область 21×17×21. Вход: /timefracture enter "+b.id);
       }catch(IllegalStateException|IllegalArgumentException ex){return msg(c.getSource(),"§c"+ex.getMessage());}
     })));
+    root.then(Commands.literal("enter").then(Commands.argument("line",StringArgumentType.word()).executes(c->{
+      if(!(c.getSource().getEntity() instanceof ServerPlayer p))return msg(c.getSource(),"§cТолько для игрока");
+      try {P.enter(p,StringArgumentType.getString(c,"line"));return 1;}
+      catch(Exception ex){return msg(c.getSource(),"§c"+ex.getMessage());}
+    })));
+    root.then(Commands.literal("return").executes(c->{
+      if(!(c.getSource().getEntity() instanceof ServerPlayer p))return msg(c.getSource(),"§cТолько для игрока");
+      try {P.leave(p);return 1;}
+      catch(Exception ex){return msg(c.getSource(),"§c"+ex.getMessage());}
+    }));
+    root.then(Commands.literal("pockets").executes(c->msg(c.getSource(),
+      "§dЛокальных временных миров: "+(P==null?0:P.count())+" / "+PocketWorld.MAX)));
     root.then(Commands.literal("tree").executes(c->{
       var list=L.list();
-      msg(c.getSource(),"§dЛиний: "+list.size());
+      msg(c.getSource(),"§dЗаписей: "+list.size()+"; локальных миров: "+(P==null?0:P.count()));
       list.stream().skip(Math.max(0,list.size()-10)).forEach(b->msg(c.getSource(),b.id+" <- "+b.parent+" "+b.name+" "+b.event));
       return 1;
     }));
@@ -82,10 +110,61 @@ public class TimeFractureMod {
     e.getDispatcher().register(root);
   }
   static void death(LivingDeathEvent e){
-    if(!(e.getEntity() instanceof ServerPlayer p)||L.frozen)return;
-    if(L.focus.values().stream().noneMatch(f->f.id.equals(p.getUUID())))return;
-    try {L.add(p.getUUID(),p.getGameProfile().getName(),L.latest(p.getUUID()),"player-death");}
-    catch(RuntimeException ex){System.err.println("[TimeFracture] "+ex);}
+    if(L.frozen||P==null)return;
+    if(e.getEntity() instanceof ServerPlayer p){
+      eventBranch(p,"player-death");
+      return;
+    }
+    if(e.getEntity() instanceof net.minecraft.world.entity.TamableAnimal pet){
+      UUID owner=pet.getOwnerUUID();
+      if(owner!=null && e.getEntity().level() instanceof net.minecraft.server.level.ServerLevel level){
+        var p=level.getServer().getPlayerList().getPlayer(owner);
+        if(p!=null)eventBranch(p,"pet-death:"+pet.getName().getString());
+      }
+    }
+    if(e.getSource().getEntity() instanceof ServerPlayer killer){
+      var type=e.getEntity().getType();
+      if(type==net.minecraft.world.entity.EntityType.ENDER_DRAGON ||
+         type==net.minecraft.world.entity.EntityType.WITHER ||
+         type==net.minecraft.world.entity.EntityType.WARDEN)
+        eventBranch(killer,"boss-defeated:"+type.toString());
+    }
+  }
+  static void serverStarted(net.neoforged.neoforge.event.server.ServerStartedEvent e){
+    Path dir=e.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+      .resolve("data").resolve("timefracture");
+    L=new Ledger(dir.resolve("branches.tsv"));
+    P=new PocketWorld(dir.resolve("pockets.tsv"));
+  }
+  static void dimensionChanged(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent e){
+    if(!L.frozen&&e.getEntity() instanceof ServerPlayer p)eventBranch(p,"dimension-change");
+  }
+  static void importantBlock(net.neoforged.neoforge.event.level.BlockEvent.BreakEvent e){
+    if(L.frozen||!(e.getPlayer() instanceof ServerPlayer p))return;
+    var s=e.getState();
+    if(s.is(net.minecraft.world.level.block.Blocks.DRAGON_EGG)
+       || s.is(net.minecraft.world.level.block.Blocks.BEACON)
+       || s.is(net.minecraft.world.level.block.Blocks.END_PORTAL_FRAME))
+        eventBranch(p,"significant-block:"+s.getBlock().getName().getString());
+  }
+  static void eventBranch(ServerPlayer subject,String event){
+    if(P==null||L.frozen)return;
+    if(L.focus.values().stream().noneMatch(f->f.id.equals(subject.getUUID())))return;
+    try{
+      // Historical bookkeeping and world snapshot are distinct: a failed
+      // physical snapshot must be reported and not misrepresented as playable.
+      String last=P.closest(subject);
+      String parent=last.equals("-")?"-":last;
+      var record=L.add(subject.getUUID(),subject.getGameProfile().getName(),parent,event);
+      var pocket=P.create(subject.getServer(),record.id,subject,parent);
+      var level=subject.getServer().getLevel(net.minecraft.resources.ResourceKey.create(
+        net.minecraft.core.registries.Registries.DIMENSION,
+        net.minecraft.resources.ResourceLocation.parse(pocket.dimension())));
+      if(level!=null)TimeEchoes.create(level,pocket,P.count());
+      subject.sendSystemMessage(Component.literal("§5[Раскол времени] §f"+event+" → "+record.id));
+    }catch(RuntimeException ex){
+      subject.sendSystemMessage(Component.literal("§c[TimeFracture] Не удалось создать ветвь: "+ex.getMessage()));
+    }
   }
   static final class Ledger {
     record Focus(UUID id,String name){}
