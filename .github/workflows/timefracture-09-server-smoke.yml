@@ -1,0 +1,42 @@
+name: TimeFracture Dedicated Server Smoke Test
+on:
+  workflow_dispatch:
+  push:
+    branches: [timefracture-v09-real-layer-dimensions]
+jobs:
+  server-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare temporary test EULA
+        run: |
+          mkdir -p TimeFractureNeoForge1211/run run
+          echo eula=true > TimeFractureNeoForge1211/run/eula.txt
+          echo eula=true > run/eula.txt
+      - name: Boot NeoForge, validate registered dimensions
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=10s 140s ./gradlew -p TimeFractureNeoForge1211 runServer --no-daemon --console=plain > TimeFractureNeoForge1211/server-smoke.log 2>&1
+          EXIT=$?
+          set -e
+          if grep -E 'Done \(|For help, type' TimeFractureNeoForge1211/server-smoke.log; then
+            echo SERVER_BOOT_OK
+          else
+            echo SERVER_BOOT_FAILED exit=$EXIT
+            tail -140 TimeFractureNeoForge1211/server-smoke.log
+            exit 1
+          fi
+      - name: Upload smoke log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TimeFracture-0.9-server-smoke-log
+          path: TimeFractureNeoForge1211/server-smoke.log
+          if-no-files-found: warn
