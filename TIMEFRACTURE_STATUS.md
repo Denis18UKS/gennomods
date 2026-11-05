@@ -37,6 +37,7 @@ There is deliberately **NO** `/timefracture converge` command to launch a surviv
 /timefracture dev rollback preview
 /timefracture dev rollback origin
 /timefracture dev rollback archive-pockets confirm
+/timefracture dev rollback unarchive
 /timefracture balance freeze
 /timefracture balance restore all
 ```

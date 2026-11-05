@@ -165,6 +165,12 @@ public class TimeFractureMod {
     rollback.then(Commands.literal("origin").executes(c->msg(c.getSource(),
         "§cDEV-откат заблокирован: отсутствует проверенный полный доснимочный backup мира. "+
         "Ручное восстановление — только на остановленном сервере из резервной копии.")));
+    rollback.then(Commands.literal("unarchive").executes(c->{
+        if(P==null)return msg(c.getSource(),"§cНет реестра временных областей.");
+        if(ConvergenceService.running())return msg(c.getSource(),"§cДождитесь завершения текущего объединения.");
+        P.restoreArchived();
+        return msg(c.getSource(),"§aАрхивные ветви снова доступны. Незавершённые области остаются заблокированными.");
+    }));
     rollback.then(Commands.literal("archive-pockets").then(Commands.literal("confirm").executes(c->{
         if(P==null)return msg(c.getSource(),"§cНет реестра временных областей.");
         if(ConvergenceService.running())return msg(c.getSource(),"§cСначала завершите объединение.");
