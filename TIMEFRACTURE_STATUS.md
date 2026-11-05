@@ -1,14 +1,14 @@
-# TimeFracture 0.9.0 experimental: functional same-coordinate branch entry
+# TimeFracture 0.9.1 experimental: functional same-coordinate branch entry
 
 **NeoForge 1.21.1** and Create 6.0.10. Builds via GitHub Actions. NOT a fully implemented multiverse.
 
 ## Functional layer entry
-- Four **pre-registered dimension slots** for each of Overworld, Nether and End (12 independently saved dimension instances). The coordinates stay exactly the same on entry and exit.
+- Four **pre-registered dimension slots** for each of Overworld, Nether and End (16 dimension definitions (four standard Overworld, four flat Overworld, four Nether and four End)). The coordinates stay exactly the same on entry and exit.
 - In a fresh world: give artifact, select yourself (real online player), create T-1. A server-thread budgeted block/NBT snapshot around the creation point runs automatically. Query /timefracture layer-status T-1 for progress. Once it says ready, /timefracture enter T-1 teleports you to a truly separate game dimension at the same XYZ. Break/place blocks there and use /timefracture return to restore your original location.
 - The 33x49x33 block snapshot preserves block states and attempts block-entity NBT copying (vanilla inventories and Create machines), with an explicit error count if a block entity could not be copied.
 - Only the initial local region is captured. Outside that region, the layer has separately generated terrain using the same world seed. This is not a complete historical snapshot of all explored world chunks.
 - Other dimensions have independent storage, but are not fully populated from parent builds. Player inventory is NOT automatically cloned/separated.
-- Layer T-2 is created from T-1 if the parent is ready; snapshot operations are queued at most 128 blocks/tick, never 53k blocks in a single tick. Pending jobs can resume after server restart.
+- Layer T-2 is created from T-1. If T-1 has not yet been prepared, the parent is automatically queued first; only ONE snapshot runs at a time. At most 128 blocks/tick are copied, never 53k blocks in a single tick. Pending jobs can resume after server restart.
 - Four slots exist by default to limit memory cost of dimensions; older metadata with IDs above T-4 cannot enter through a slot. No artificial islands, no fake villager doubles.
 - Because these are separate dimensions, players in different layers can modify the same coordinates independently without overwriting one another.
 

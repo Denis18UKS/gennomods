@@ -58,6 +58,7 @@ public final class LayerWorlds {
     private final Path file;
     private final LayerCatalog catalog;
     private final Set<String> ready=new HashSet<>();
+    private final Set<String> flatLayers=new HashSet<>();
     private final Deque<Job> jobs=new ArrayDeque<>();
     private final Map<UUID,ReturnPoint> returns=new HashMap<>();
 
@@ -83,8 +84,9 @@ public final class LayerWorlds {
         return value;
     }
 
-    public static String destination(String id,String kind){
-        return "timefracture:layer_"+String.format(Locale.ROOT,"%02d",slot(id))+"_"+kind;
+    public synchronized String destination(String id,String kind){
+        String suffix=kind.equals("overworld") && flatLayers.contains(id) ? "flat" : kind;
+        return "timefracture:layer_"+String.format(Locale.ROOT,"%02d",slot(id))+"_"+suffix;
     }
 
     private static ServerLevel getLevel(MinecraftServer server,String id){
@@ -121,6 +123,14 @@ public final class LayerWorlds {
             }
             sourceDimension=destination(parent,kind);
         }
+        // Generator type follows the root or the prepared parent.
+        // This avoids creating a flat island surrounded by normal noise terrain.
+        if(parent==null || parent.equals("-")){
+            if(kind.equals("overworld") &&
+                player.serverLevel().getChunkSource().getGenerator()
+                  instanceof net.minecraft.world.level.levelgen.FlatLevelSource)
+                flatLayers.add(id);
+        }else if(flatLayers.contains(parent))flatLayers.add(id);
         if(getLevel(player.getServer(),destination(id,kind))==null)
             throw new IllegalStateException("Нет измерения "+destination(id,kind)+
                 ". Перезапусти мир с установленной актуальной версией мода.");
@@ -224,6 +234,7 @@ public final class LayerWorlds {
             List<String> lines=new ArrayList<>();
             lines.add("LAYER_WORLDS_V1");
             for(String id:ready)lines.add("Y\t"+id);
+            for(String id:flatLayers)lines.add("F\t"+id);
             for(Job j:jobs)lines.add(String.join("\t","J",j.id,j.sourceDimension,j.kind,
                 Integer.toString(j.x),Integer.toString(j.y),Integer.toString(j.z),
                 Integer.toString(j.offset),j.actor.toString()));
@@ -248,6 +259,7 @@ public final class LayerWorlds {
                 String[] a=lines.get(i).split("\t",-1);
                 switch(a[0]){
                     case "Y" -> ready.add(a[1]);
+                    case "F" -> flatLayers.add(a[1]);
                     case "J" -> jobs.addLast(new Job(a[1],a[2],a[3],
                         Integer.parseInt(a[4]),Integer.parseInt(a[5]),
                         Integer.parseInt(a[6]),Integer.parseInt(a[7]),UUID.fromString(a[8])));

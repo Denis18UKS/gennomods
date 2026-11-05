@@ -3,7 +3,7 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="timefracture"
-version="0.9.0-dimension-slots"
+version="0.9.1-dimension-slots"
 displayName="TimeFracture"
 description='''NeoForge 1.21.1 ALPHA. Create-powered kinetic convergence core. Requires max server RPM to merge local branch pockets; archive-only DEV rollback, not full world restoration.'''
 [[dependencies.timefracture]]
