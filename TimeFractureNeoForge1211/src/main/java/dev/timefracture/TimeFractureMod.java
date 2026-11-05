@@ -25,13 +25,15 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import dev.timefracture.create.ChronalCoreBlock;
 import dev.timefracture.create.ChronalCoreBlockEntity;
+import dev.timefracture.layer.LayerCatalog;
 import java.nio.file.*;
 import java.util.*;
 
 @Mod("timefracture")
 public class TimeFractureMod {
   static Ledger L=new Ledger(Path.of("config","timefracture","branches.tsv"));
-  static PocketWorld P;
+  static PocketWorld P; // LEGACY: read-only recovery for previously generated pocket areas
+  static LayerCatalog LAYERS;
   static AnomalyManager A;
   public static final DeferredRegister.Blocks BLOCKS=DeferredRegister.createBlocks("timefracture");
   public static final DeferredBlock<ChronalCoreBlock> CHRONAL_CORE =
@@ -62,8 +64,8 @@ public class TimeFractureMod {
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::serverStarted);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::dimensionChanged);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::importantBlock);
-    NeoForge.EVENT_BUS.addListener(TimeEchoes::tick);
-    NeoForge.EVENT_BUS.addListener(TimeFractureMod::randomTravelTick);
+    // NEVER instantiate or tick villager-based fake player echoes in v0.8.
+    // NEVER auto-teleport players into displaced legacy pocket islands.
     NeoForge.EVENT_BUS.addListener(ConvergenceService::tick);
   }
   public static boolean canConverge() { return P!=null && P.count()>=2 && !L.frozen; }
@@ -88,23 +90,26 @@ public class TimeFractureMod {
       if(c.getSource().getServer().getPlayerList().getPlayer(f.id)==null)return msg(c.getSource(),"§cЦелевой игрок офлайн.");
       try {
         String parent=StringArgumentType.getString(c,"parent");
-        if(P==null)throw new IllegalStateException("Менеджер ветвей ещё не загрузился");
-        if(L.frozen)throw new IllegalStateException("Ветвления заморожены");
-        if(parent!=null&&!parent.equals("-")&&P.get(parent)==null)
-            throw new IllegalArgumentException("Родительская линия не имеет снимка: "+parent);
-        var b=L.add(f.id,f.name,parent,"manual");
-        var pocket=P.create(c.getSource().getServer(),b.id, c.getSource().getServer().getPlayerList().getPlayer(f.id),parent);
-        var world=c.getSource().getServer().getLevel(net.minecraft.resources.ResourceKey.create(
-            net.minecraft.core.registries.Registries.DIMENSION,
-            net.minecraft.resources.ResourceLocation.parse(pocket.dimension())));
-        if(world!=null)TimeEchoes.create(world,pocket,P.count());
-        return msg(c.getSource(),"§aВетвь "+b.id+" готова: отдельная область 21×17×21. Вход: /timefracture enter "+b.id);
+        if(LAYERS==null)throw new IllegalStateException("Индекс временных слоёв ещё не загружен");
+        if(L.frozen)throw new IllegalStateException("Временное ветвление заморожено");
+        if(!"-".equals(parent) && LAYERS.find(parent)==null)
+            throw new IllegalArgumentException("У родительской линии отсутствует индекс слоёв: "+parent);
+        ServerPlayer source=c.getSource().getServer().getPlayerList().getPlayer(f.id);
+        if(source==null)throw new IllegalStateException("Игрок больше не онлайн");
+        var created=L.add(f.id,f.name,parent,"manual");
+        registerLayer(source,created.id,parent);
+        return msg(c.getSource(),"§aСоздана запись слоя "+created.id+
+            " в тех же координатах всех измерений. §eИзолированное хранение чанков в разработке; "+
+            "ни островов, ни телепортаций, ни жителей-двойников не создаётся.");
       }catch(IllegalStateException|IllegalArgumentException ex){return msg(c.getSource(),"§c"+ex.getMessage());}
     })));
     root.then(Commands.literal("enter").then(Commands.argument("line",StringArgumentType.word()).executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p))return msg(c.getSource(),"§cТолько для игрока");
-      try {P.enter(p,StringArgumentType.getString(c,"line"));return 1;}
-      catch(Exception ex){return msg(c.getSource(),"§c"+ex.getMessage());}
+      String id=StringArgumentType.getString(c,"line");
+      if(LAYERS==null || LAYERS.find(id)==null)return msg(c.getSource(),"§cТакого временного слоя нет: "+id);
+      return msg(c.getSource(),"§eСлой "+id+" зарегистрирован в тех же координатах. "+
+          "Переход пока заблокирован: изоляция чанков/сущностей не готова. "+
+          "Создавать фальшивый остров вместо мира мод больше не будет.");
     })));
     root.then(Commands.literal("return").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p))return msg(c.getSource(),"§cТолько для игрока");
@@ -115,8 +120,8 @@ public class TimeFractureMod {
     anomalies.then(Commands.literal("on").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
         return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
-      A.set(p.getUUID(),true);
-      return msg(c.getSource(),"§dСлучайные переходы включены для тебя");
+      return msg(c.getSource(),"§eСлучайные переходы временно выключены: нет изолированных мировых слоёв. "+
+          "Не телепортируем игрока в карманные копии.");
     }));
     anomalies.then(Commands.literal("off").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
@@ -127,13 +132,20 @@ public class TimeFractureMod {
     anomalies.then(Commands.literal("test").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
         return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
-      return msg(c.getSource(),A.travel(p,true)?"§5Аномалия создана":"§cНужна хотя бы одна доступная линия");
+      return msg(c.getSource(),"§eАномалия недоступна до реализации настоящих временных слоёв; "+
+          "прежний перенос на острова отключён.");
     }));
     root.then(anomalies);
     root.then(Commands.literal("converge")
         .then(Commands.literal("status").executes(c->msg(c.getSource(),
             "§bОбъединение запускается ТОЛЬКО от механизма Create, а не командой. "+
             ConvergenceService.status()))));
+    root.then(Commands.literal("layers").executes(c->msg(c.getSource(),
+      "§dЗарегистрированных слоёв: "+(LAYERS==null?0:LAYERS.size())+
+      " · игровая изоляция чанков: НЕ ГОТОВА")));
+    root.then(Commands.literal("inspect").then(Commands.argument("line",StringArgumentType.word()).executes(c->
+      msg(c.getSource(),LAYERS==null?"Индекс не загружен":
+          LAYERS.describe(StringArgumentType.getString(c,"line"))))));
     root.then(Commands.literal("pockets").executes(c->msg(c.getSource(),
       "§dЛокальных временных миров: "+(P==null?0:P.count())+" / "+PocketWorld.MAX)));
     root.then(Commands.literal("tree").executes(c->{
@@ -154,6 +166,21 @@ public class TimeFractureMod {
     admin.then(Commands.literal("grant").then(Commands.argument("player",EntityArgument.player()).executes(c->{
       var p=EntityArgument.getPlayer(c,"player");L.devs.add(p.getUUID());L.save();return msg(c.getSource(),"DEV+: "+p.getName().getString());
     })));
+    admin.then(Commands.literal("cleanup-legacy-echoes").executes(c->{
+      int removed=0;
+      for(var level:c.getSource().getServer().getAllLevels()){
+        for(var entity:level.getAllEntities()){
+          if(entity instanceof net.minecraft.world.entity.npc.Villager villager &&
+              (villager.getPersistentData().contains("tf_echo_subject") ||
+               villager.getPersistentData().getBoolean("tf_keeper"))){
+            entity.discard();
+            removed++;
+          }
+        }
+      }
+      return msg(c.getSource(),"§aУдалено старых жителей-заглушек: "+removed+
+           ". Настоящие жители не затронуты.");
+    }));
     admin.then(Commands.literal("revoke").then(Commands.argument("player",EntityArgument.player()).executes(c->{
       var p=EntityArgument.getPlayer(c,"player");L.devs.remove(p.getUUID());L.save();return msg(c.getSource(),"DEV-: "+p.getName().getString());
     })));
@@ -188,7 +215,7 @@ public class TimeFractureMod {
     e.getDispatcher().register(root);
   }
   static void death(LivingDeathEvent e){
-    if(L.frozen||P==null)return;
+    if(L.frozen||LAYERS==null)return;
     if(e.getEntity() instanceof ServerPlayer p){
       eventBranch(p,"player-death");
       return;
@@ -212,7 +239,8 @@ public class TimeFractureMod {
     Path dir=e.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
       .resolve("data").resolve("timefracture");
     L=new Ledger(dir.resolve("branches.tsv"));
-    P=new PocketWorld(dir.resolve("pockets.tsv"));
+    P=new PocketWorld(dir.resolve("pockets.tsv")); // legacy stored pockets, not created anymore
+    LAYERS=new LayerCatalog(dir.resolve("layers.tsv"));
     A=new AnomalyManager(dir.resolve("anomalies.txt"));
   }
   static void randomTravelTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post e){
@@ -229,25 +257,31 @@ public class TimeFractureMod {
        || s.is(net.minecraft.world.level.block.Blocks.END_PORTAL_FRAME))
         eventBranch(p,"significant-block:"+s.getBlock().getName().getString());
   }
+  static void registerLayer(ServerPlayer p,String id,String parent){
+    if(LAYERS==null)throw new IllegalStateException("Не загружен индекс слоёв");
+    var dim=java.util.stream.StreamSupport.stream(
+        p.getServer().getAllLevels().spliterator(),false)
+        .map(level->level.dimension().location().toString()).toList();
+    var anchor=p.blockPosition();
+    LAYERS.register(id,parent,p.getUUID(),p.getGameProfile().getName(),
+        p.level().dimension().location().toString(),anchor.getX(),anchor.getY(),anchor.getZ(),dim);
+  }
+
   static void eventBranch(ServerPlayer subject,String event){
-    if(P==null||L.frozen)return;
+    if(LAYERS==null||L.frozen)return;
     if(L.focus.values().stream().noneMatch(f->f.id.equals(subject.getUUID())))return;
     try{
-      // Historical bookkeeping and world snapshot are distinct: a failed
-      // physical snapshot must be reported and not misrepresented as playable.
-      String last=P.closest(subject);
-      String parent=last.equals("-")?"-":last;
+      String prev=L.latest(subject.getUUID());
+      String parent=LAYERS.find(prev)==null?"-":prev;
       var record=L.add(subject.getUUID(),subject.getGameProfile().getName(),parent,event);
-      var pocket=P.create(subject.getServer(),record.id,subject,parent);
-      var level=subject.getServer().getLevel(net.minecraft.resources.ResourceKey.create(
-        net.minecraft.core.registries.Registries.DIMENSION,
-        net.minecraft.resources.ResourceLocation.parse(pocket.dimension())));
-      if(level!=null)TimeEchoes.create(level,pocket,P.count());
-      subject.sendSystemMessage(Component.literal("§5[Раскол времени] §f"+event+" → "+record.id));
+      registerLayer(subject,record.id,parent);
+      subject.sendSystemMessage(Component.literal("§5[Разветвление времени] §f"+
+          event+" → "+record.id+" · сохранён индекс слоёв без копирования блоков"));
     }catch(RuntimeException ex){
-      subject.sendSystemMessage(Component.literal("§c[TimeFracture] Не удалось создать ветвь: "+ex.getMessage()));
+      subject.sendSystemMessage(Component.literal("§c[TimeFracture] Не удалось зарегистрировать событие: "+ex.getMessage()));
     }
   }
+
   static final class Ledger {
     record Focus(UUID id,String name){}
     record Branch(String id,String parent,UUID player,String name,String event,long millis,int stability){}
