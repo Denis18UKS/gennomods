@@ -39,6 +39,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
     private boolean armed;
     private UUID owner;
     private boolean riskCheckArmed;
+    private int underSpeedTicks;
 
     public ChronalCoreBlockEntity(BlockPos pos, BlockState state) {
         super(TimeFractureMod.CHRONAL_CORE_BE.get(), pos, state);
@@ -68,6 +69,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
         owner = sp.getUUID();
         progress = 0;
         riskCheckArmed = false;
+        underSpeedTicks = 0;
         armed = true;
         setChanged();
         sp.sendSystemMessage(Component.literal("§dХроноконденсатор заряжен звездой Незера. "+
@@ -124,6 +126,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
         int required=maxRpm();
         boolean fast = current >= required - 0.01f && !isOverStressed();
         if(fast) {
+            underSpeedTicks=0;
             progress++;
             riskCheckArmed=true;
             if(progress % 100 == 0)
@@ -136,6 +139,18 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
                 ConvergenceService.start(server,worldPosition,owner);
             }
         }else {
+            // A slow machine is dangerous too, but only one additional
+            // hazard roll every 120 ticks (6 seconds), NEVER every tick.
+            underSpeedTicks++;
+            if(underSpeedTicks>=120){
+                underSpeedTicks=0;
+                if(server.random.nextInt(HAZARD_CHANCE)==0){
+                    cancel("Недостаточные обороты привели к небольшому взрыву!");
+                    server.explode(null,worldPosition.getX()+.5,worldPosition.getY()+.5,
+                        worldPosition.getZ()+.5,1.5f,Level.ExplosionInteraction.NONE);
+                    return;
+                }
+            }
             // A single hazard roll per interruption, not once per tick.
             if(riskCheckArmed) {
                 riskCheckArmed=false;
@@ -158,6 +173,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
         progress=0;
         owner=null;
         riskCheckArmed=false;
+        underSpeedTicks=0;
         setChanged();
         if(level instanceof ServerLevel l)
             for(ServerPlayer p:l.getPlayers(x->x.blockPosition().closerThan(worldPosition,20)))
@@ -169,6 +185,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
         tag.putInt("Charge",progress);
         tag.putBoolean("Armed",armed);
         tag.putBoolean("Risk",riskCheckArmed);
+        tag.putInt("UnderSpeedTicks",underSpeedTicks);
         if(owner!=null)tag.putUUID("Owner",owner);
         super.write(tag,registries,clientPacket);
     }
@@ -179,6 +196,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
         progress=tag.getInt("Charge");
         armed=tag.getBoolean("Armed");
         riskCheckArmed=tag.getBoolean("Risk");
+        underSpeedTicks=tag.getInt("UnderSpeedTicks");
         owner=tag.hasUUID("Owner")?tag.getUUID("Owner"):null;
     }
 }

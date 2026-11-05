@@ -15,7 +15,7 @@ This is an **experimental local-pocket** implementation, not a fully independent
 9. Supply the **actual server-configured maximum RPM** for 600 consecutive ticks (30 seconds). Use Create Speed Controller / large cogwheel and sufficient stress capacity. A stalled or overstressed network counts as 0 RPM.
 10. Once fully charged, the server starts an incremental convergence job and creates a NEW merged pocket per dimension. It may take more time to process all saved branches. The original pockets are archived **without deleting their saved blocks**.
 
-If RPM drops after valid charging began, charging restarts from zero, and a ONE-TIME 1-in-12 failure chance applies to that interruption. The failure produces a small world explosion (no block destruction) and cancels the operation. No kick, account punishment or ban.
+If RPM drops after valid charging began, charging restarts from zero and a one-time 1-in-12 failure chance applies to that interruption. Even before charging begins, operating continuously below the configured maximum gives a separate 1-in-12 accident check per 120 ticks (six seconds). Failures make a small in-world explosion (no block destruction) and cancel charging; no kick or ban.
 
 ### Check machine
 Right-click core with empty hand to see actual RPM, configured maximum and charge. The process can only be triggered by this physically powered Create machine.
