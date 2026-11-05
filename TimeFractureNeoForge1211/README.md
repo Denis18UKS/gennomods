@@ -1,48 +1,64 @@
-# TimeFracture 0.6 — playable LOCAL timeline experiments (NeoForge 1.21.1)
+# TimeFracture 0.7 Create Convergence — NeoForge 1.21.1
 
-This version is an expansion of two separate mods, NOT the complete multiverse described by the original idea.
+## Build status
+This is an **experimental local-pocket** implementation, not a fully independent multiverse. It integrates directly with **Create 6.0.10** kinetic mechanics and uses configured maximum RPM (`AllConfigs.server().kinetics.maxRotationSpeed`, default 256).
 
-## Implemented / attempted
-- Client artifact screen with actual server player list (from Minecraft connection); server revalidates focused targets using EntityArgument.player
-- Unlimited metadata branch ancestry (capped locally to 256 playable snapshot pockets), as in T-1 -> T-2 -> T-3
-- Physical snapshots of 21 x 17 x 21 block neighborhoods, copied into distant regions in the *same existing dimension*
-- Recursive pocket creation, entrance and return with per-player original position saved across restarts
-- Server-side event tracking for tracked player's death, tamed pet death, boss victory, rare block destruction, dimension change
-- Vanilla villager-based NPC echoes and observer pathfinding + reactive dialogue; dangerous contact triggers non-destructive evacuation/freeze
-- DEV freeze, unfreeze, metadata stabilization, access by UUID
+## Survival: merge branches through a real Create machine (NO merge command)
+1. Install both TimeFracture and Create 6.0.10 on both client and server; FX mod is optional for visuals.
+2. Create two or more localized branches using the time artifact or `/timefracture branch -`.
+3. Craft **Chronal Core**: 4 Create Brass Casings, 4 Create Precision Mechanisms, one Minecraft Clock (pattern `BPB / PCP / BPB`).
+4. Place the **Chronal Core** at the center of a 3×3 level.
+5. Place **one Create Brass Casing** to the north, south, east and west at the SAME Y level.
+6. Place a Create **Shaft** directly BELOW the core, on the **Y axis**. Connect the shaft to a real Create rotational network capable of the maximum configured rotation speed.
+7. Place a Minecraft **Amethyst Block** directly ABOVE the core.
+8. Right-click the core with **one Nether Star** to prime it. Nether Star is consumed in survival.
+9. Supply the **actual server-configured maximum RPM** for 600 consecutive ticks (30 seconds). Use Create Speed Controller / large cogwheel and sufficient stress capacity. A stalled or overstressed network counts as 0 RPM.
+10. Once fully charged, the server starts an incremental convergence job and creates a NEW merged pocket per dimension. It may take more time to process all saved branches. The original pockets are archived **without deleting their saved blocks**.
 
-## Important LIMITATIONS
-- NOT fully separate world dimensions, no copies of all chunks in the world, no independent world time or weather
-- Each branch is a small explorable block snapshot. The copied region is saved as vanilla world blocks at remote coordinates
-- Containers/block entities and mobs are NOT cloned for safety
-- Echoes are villagers carrying alternate-player identity; NOT visually correct player clones and NOT neural AI
-- A "cosmic collapse" is represented by an evacuation and frozen branching, never damage to the save files
-- GUI player list is based on the real client tab-player list; server validates chosen online player before accepting the command
-- The FX mod remains the separately built GLSL v0.5, with procedural alternate landscapes, not live portal views into actual cloned regions
-- Synced multi-user simultaneous independent timeline copies, view-through rendering, and comprehensive causality model remain TODO
+If RPM drops after valid charging began, charging restarts from zero, and a ONE-TIME 1-in-12 failure chance applies to that interruption. The failure produces a small world explosion (no block destruction) and cancels the operation. No kick, account punishment or ban.
 
-## Commands
+### Check machine
+Right-click core with empty hand to see actual RPM, configured maximum and charge. The process can only be triggered by this physically powered Create machine.
+```
+/timefracture converge status
+```
+There is deliberately **NO** `/timefracture converge` command to launch a survival merge.
+
+### Conflict policy
+- Existing pocket snapshots are never overwritten.
+- The merged result is a new saved local area for each Minecraft dimension represented by the inputs.
+- Non-air blocks are added where the base snapshot is empty.
+- If two branches have different blocks at the same coordinate, the first branch's block is retained and the conflict is counted and reported; manual reconciliation may be necessary.
+- Block entities (Create machines, inventories), entities and player inventories are NOT merged; this is a conservative preview of a future timeline-layer engine.
+- Original branches become archived and are not normally selectable after completion, but their remote world regions remain on disk.
+
+## DEV restore and safety
+```
+/timefracture dev rollback preview
+/timefracture dev rollback origin
+/timefracture dev rollback archive-pockets confirm
+/timefracture balance freeze
+/timefracture balance restore all
+```
+The first two DEV commands are GUARDED: **a full world-history rewind is refused unless a verified full pre-split backup is available**. Current builds do not create such full backups. Archiving local pockets cannot bring back dead pets, repair inventories, or rewind an entire save. Restore a complete backup manually while the server is OFF.
+
+### Other commands
 ```
 /give @p timefracture:time_artifact
+/give @p timefracture:chronal_core
 /timefracture players
-/timefracture focus <online-player>
+/timefracture focus <online_player>
 /timefracture branch -
 /timefracture branch T-1
 /timefracture tree
 /timefracture pockets
 /timefracture enter T-1
 /timefracture return
-/timefracture balance status
-/timefracture balance freeze
-/timefracture balance unfreeze
-/timefracture balance restore all
-/timefracture dev grant <player>
-/timefracture dev revoke <player>
+/timefracture anomaly on
+/timefracture anomaly test
+/timefracture anomaly off
 ```
+The artifact has a new animated medieval broken-clock texture. FX remains the independently built TimeFractureFX 0.5.0 (two world-space GLSL effects, not yet showing actual real timeline snapshots).
 
-## Risks
-Make a BACKUP of the world before testing. Snapshot creation loads/copies roughly 7500 blocks in the same server tick and may lag the server. Snapshot pockets are stored at far world coordinates; they are not protected from commands or external mods. Do not run the alpha on a production server.
-
-## Build
-`./gradlew -p TimeFractureNeoForge1211 clean build`
-`./gradlew -p TimeFractureFXNeoForge1211 clean build`
+## WARNING
+Back up your world before testing. This experimental module copies block volumes to far-away coordinates and loads chunks. It has not been launched inside an actual Minecraft client in this development environment; successful GitHub Actions compilation is not equivalent to tested gameplay.
