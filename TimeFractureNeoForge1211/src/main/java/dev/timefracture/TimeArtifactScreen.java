@@ -69,8 +69,8 @@ public final class TimeArtifactScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Создать ветвь"),b->
             command("timefracture branch "+validId())
         ).bounds(left+201,top+255,114,20).build());
-        addRenderableWidget(Button.builder(Component.literal("Войти"),b->{
-            if(!validId().equals("-"))command("timefracture enter "+validId());
+        addRenderableWidget(Button.builder(Component.literal("Слой"),b->{
+            if(!validId().equals("-"))command("timefracture inspect "+validId());
         }).bounds(left+318,top+255,60,20).build());
         addRenderableWidget(Button.builder(Component.literal("Древо"),b->command("timefracture tree")
         ).bounds(left+55,top+229,82,20).build());

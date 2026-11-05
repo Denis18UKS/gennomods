@@ -1,65 +1,44 @@
-# TimeFracture 0.7 Create Convergence — NeoForge 1.21.1
+# TimeFracture 0.8 — NeoForge 1.21.1: stability & architecture repair
 
-## Build status
-This is an **experimental local-pocket** implementation, not a fully independent multiverse. It integrates directly with **Create 6.0.10** kinetic mechanics and uses configured maximum RPM (`AllConfigs.server().kinetics.maxRotationSpeed`, default 256).
+This is an EXPERIMENTAL progress build. It deliberately does NOT claim to implement independent full-world time layers or true AI player clones.
 
-## Survival: merge branches through a real Create machine (NO merge command)
-1. Install both TimeFracture and Create 6.0.10 on both client and server; FX mod is optional for visuals.
-2. Create two or more localized branches using the time artifact or `/timefracture branch -`.
-3. Craft **Chronal Core**: 4 Create Brass Casings, 4 Create Precision Mechanisms, one Minecraft Clock (pattern `BPB / PCP / BPB`).
-4. Place the **Chronal Core** at the center of a 3×3 level.
-5. Place **one Create Brass Casing** to the north, south, east and west at the SAME Y level.
-6. Place a Create **Shaft** directly BELOW the core, on the **Y axis**. Connect the shaft to a real Create rotational network capable of the maximum configured rotation speed.
-7. Place a Minecraft **Amethyst Block** directly ABOVE the core.
-8. Right-click the core with **one Nether Star** to prime it. Nether Star is consumed in survival.
-9. Supply the **actual server-configured maximum RPM** for 600 consecutive ticks (30 seconds). Use Create Speed Controller / large cogwheel and sufficient stress capacity. A stalled or overstressed network counts as 0 RPM.
-10. Once fully charged, the server starts an incremental convergence job and creates a NEW merged pocket per dimension. It may take more time to process all saved branches. The original pockets are archived **without deleting their saved blocks**.
+## Fixed this release
+* The sky portal in TimeFractureFX is now a huge, world-anchored, GLSL-filled sky aperture drawn at AFTER_SKY, **not a purple cone** rendered with thousands of transparent walls. Single 96-triangle sky surface, radius 420 blocks, preview placed 96 blocks above the player.
+* Preview limit: one portal, one rift, one window, instead of stacking many copies every command.
+* Ordinary timeline creation does NOT make 21x17x21 displaced islands or cause thousands of synchronous setBlock operations anymore.
+* Ordinary timeline creation does NOT spawn Villagers pretending to be a real player.
+* Recursive lineage, all dimension registry IDs and original X/Y/Z are stored in `layers.tsv`, scoped to the save. This is **metadata only**; isolated chunk & block-entity state and simultaneous per-player views remain unimplemented.
+* Player can inspect metadata with `/timefracture layers` and `/timefracture inspect T-1`. Entry to metadata-only timelines and random intrusion are blocked to avoid falsely teleporting users into a pocket.
+* DEV operator cleanup command `/timefracture dev cleanup-legacy-echoes` removes tagged old Villager proxies from loaded chunks, without touching ordinary villagers.
+* Artifact makes intermittent quiet clock-tick attempts when held (after first GUI open), using built-in Minecraft mechanical sounds.
+* Optional JEI plugin registers a new recipe category with **rotating real block models**, cyclic 3D layer-by-layer guide to the Create chronal condenser structure. Needs JEI installed (19.57.x+ 1.21.1 API).
 
-If RPM drops after valid charging began, charging restarts from zero and a one-time 1-in-12 failure chance applies to that interruption. Even before charging begins, operating continuously below the configured maximum gives a separate 1-in-12 accident check per 120 ticks (six seconds). Failures make a small in-world explosion (no block destruction) and cancel charging; no kick or ban.
+## World safety and migration
+Previously created legacy displaced pockets are kept for recovery. Original world and region files are **not automatically deleted**. Existing legacy Create convergence is left available for archived old pocket data only; the newly indexed world-wide layers cannot be merged until an isolated chunk backend is implemented.
 
-### Check machine
-Right-click core with empty hand to see actual RPM, configured maximum and charge. The process can only be triggered by this physically powered Create machine.
-```
-/timefracture converge status
-```
-There is deliberately **NO** `/timefracture converge` command to launch a survival merge.
-
-### Conflict policy
-- Existing pocket snapshots are never overwritten.
-- The merged result is a new saved local area for each Minecraft dimension represented by the inputs.
-- Non-air blocks are added where the base snapshot is empty.
-- If two branches have different blocks at the same coordinate, the first branch's block is retained and the conflict is counted and reported; manual reconciliation may be necessary.
-- Block entities (Create machines, inventories), entities and player inventories are NOT merged; this is a conservative preview of a future timeline-layer engine.
-- Original branches become archived and are not normally selectable after completion, but their remote world regions remain on disk.
-
-## DEV restore and safety
-```
-/timefracture dev rollback preview
-/timefracture dev rollback origin
-/timefracture dev rollback archive-pockets confirm
-/timefracture dev rollback unarchive
-/timefracture balance freeze
-/timefracture balance restore all
-```
-The first two DEV commands are GUARDED: **a full world-history rewind is refused unless a verified full pre-split backup is available**. Current builds do not create such full backups. Archiving local pockets cannot bring back dead pets, repair inventories, or rewind an entire save. Restore a complete backup manually while the server is OFF.
-
-### Other commands
+## Commands
 ```
 /give @p timefracture:time_artifact
 /give @p timefracture:chronal_core
 /timefracture players
-/timefracture focus <online_player>
+/timefracture focus <online player>
 /timefracture branch -
 /timefracture branch T-1
 /timefracture tree
-/timefracture pockets
-/timefracture enter T-1
-/timefracture return
-/timefracture anomaly on
-/timefracture anomaly test
-/timefracture anomaly off
+/timefracture layers
+/timefracture inspect T-1
+/timefracture dev cleanup-legacy-echoes
+/tfx preview info
+/tfx preview portal
+/tfx preview rift
+/tfx preview window
+/tfx preview close
+/tfx preview collapse
+/tfx preview stop
 ```
-The artifact has a new animated medieval broken-clock texture. FX remains the independently built TimeFractureFX 0.5.0 (two world-space GLSL effects, not yet showing actual real timeline snapshots).
 
-## WARNING
-Back up your world before testing. This experimental module copies block volumes to far-away coordinates and loads chunks. It has not been launched inside an actual Minecraft client in this development environment; successful GitHub Actions compilation is not equivalent to tested gameplay.
+## Not yet completed
+True world-wide, fully simulated divergent chunk/entity inventories at SAME coordinates; per-player isolated block/world states in multiplayer; skin-preserving player-like AI entities; actual airships across rifts; portal remote-world camera; full pre-split rollback; automatic survival convergence of new world-wide layers. These require substantial new game architecture and cannot be honestly promised as finished in this build.
+
+## Verification
+GitHub Actions tests compilation & packaged resources. Actual in-game NeoForge client, JEI interaction, Create integration, Iris/Oculus and performance profiling still need player verification. Keep a world backup and remove older versions of the two mods.

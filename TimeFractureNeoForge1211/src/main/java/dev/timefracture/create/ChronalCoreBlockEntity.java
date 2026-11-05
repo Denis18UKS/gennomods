@@ -55,7 +55,7 @@ public class ChronalCoreBlockEntity extends KineticBlockEntity {
             return false;
         }
         if (TimeFractureMod.activePocketCount() < 2) {
-            sp.sendSystemMessage(Component.literal("§cДля объединения нужно как минимум две сохранённые временные ветви."));
+            sp.sendSystemMessage(Component.literal("§cВременные слои пока не имеют изолированного хранения чанков. Механизм доступен только для двух и более старых карманных снимков, новые слои он не объединяет."));
             return false;
         }
         if (!structureValid()) {

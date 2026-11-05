@@ -46,15 +46,18 @@ public final class FxClient {
         long now = System.currentTimeMillis();
         switch (action) {
             case "portal", "rift", "window" -> {
+                // One live instance per type limits GPU work and prevents
+                // accidental stacking of many sky surfaces.
+                EFFECTS.removeIf(existing -> existing.type().equals(action));
                 Vec3 origin = mc.player.position();
                 double height = switch(action) {
-                    case "portal" -> 58.0;
+                    case "portal" -> 96.0;
                     case "rift" -> 24.0;
                     default -> 4.0;
                 };
                 // All anchors live in absolute world coordinates, not relative to camera.
                 EFFECTS.add(new Fx(action, origin.add(0, height, 0), now, 0, false));
-                msg("§d[TimeFractureFX] §a"+action+" · 3D world-mesh + GLSL · Y+"+(int)height);
+                msg("§d[TimeFractureFX] §a"+action+" · "+(action.equals("portal")?"небесная воронка без конуса":"3D-разлом")+" · Y+"+(int)height);
             }
             case "close","collapse" -> {
                 for (int i=0; i<EFFECTS.size(); i++) {

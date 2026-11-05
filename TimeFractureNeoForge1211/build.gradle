@@ -24,8 +24,12 @@ tasks.withType(JavaCompile).configureEach {
 repositories {
     maven { url = "https://maven.createmod.net" }
     maven { url = "https://maven.ithundxr.dev/snapshots" }
+    maven { url = "https://maven.blamejared.com" }
 }
 dependencies {
+    // JEI is optional in installed modpacks; classes are discovered only by JEI.
+    compileOnly("mezz.jei:jei-1.21.1-common-api:19.57.0.451")
+    compileOnly("mezz.jei:jei-1.21.1-neoforge-api:19.57.0.451")
     implementation("com.simibubi.create:create-1.21.1:6.0.10-280:slim") { transitive = false }
     implementation("net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1")
     compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-1.21.1:1.0.6")

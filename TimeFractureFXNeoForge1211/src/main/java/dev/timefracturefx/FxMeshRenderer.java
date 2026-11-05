@@ -28,38 +28,43 @@ public final class FxMeshRenderer {
     private static final long START_NANOS=System.nanoTime();
     private FxMeshRenderer() {}
 
+    /**
+     * The portal is painted during NeoForge's AFTER_SKY stage, before
+     * world chunks are rendered. It is world-anchored and not a screen overlay.
+     * Rift objects remain in AFTER_PARTICLES. This avoids drawing the old
+     * solid cone into the ordinary world render stage.
+     */
     public static void render(RenderLevelStageEvent e) {
-        if(e.getStage()!=RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        boolean sky=e.getStage()==RenderLevelStageEvent.Stage.AFTER_SKY;
+        boolean world=e.getStage()==RenderLevelStageEvent.Stage.AFTER_PARTICLES;
+        if(!sky&&!world) return;
         if(FxClient.effects().isEmpty()) return;
-        ShaderInstance portal=FxShaders.PORTAL;
-        ShaderInstance rift=FxShaders.RIFT;
-        if(portal==null||rift==null) return;
+        ShaderInstance shader=sky?FxShaders.PORTAL:FxShaders.RIFT;
+        if(shader==null) return;
 
         PoseStack pose=e.getPoseStack();
         if(pose==null) return;
         Vec3 camera=e.getCamera().getPosition();
         long now=System.currentTimeMillis();
-        // Using wall-clock seconds as a float lost almost all subsecond precision.
         float seconds=(System.nanoTime()-START_NANOS)*1.0e-9f;
         pose.pushPose();
         pose.translate(-camera.x,-camera.y,-camera.z);
-        Matrix4f m=pose.last().pose();
+        Matrix4f matrix=pose.last().pose();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
         RenderSystem.enableDepthTest();
+        RenderSystem.depthMask(!sky);
         try {
+            shader(shader,seconds);
             for(FxClient.Fx fx:FxClient.effects()) {
-                if(camera.distanceToSqr(fx.center())>650.0*650.0) continue;
+                boolean isPortal=fx.type().equals("portal");
+                if(isPortal!=sky)continue;
+                if(camera.distanceToSqr(fx.center())>1200.0*1200.0)continue;
                 float amount=phase(fx,now);
-                if(amount<=0f) continue;
-                if(fx.type().equals("portal")) {
-                    shader(portal,seconds);
-                    portal(m,fx.center(),amount,seconds);
-                } else {
-                    shader(rift,seconds);
-                    rift(m,fx.center(),amount,fx.type().equals("window"),seconds);
-                }
+                if(amount<=0f)continue;
+                if(sky)portal(matrix,fx.center(),amount,seconds);
+                else rift(matrix,fx.center(),amount,fx.type().equals("window"),seconds);
             }
         } finally {
             RenderSystem.depthMask(true);
@@ -117,80 +122,21 @@ public final class FxMeshRenderer {
         }
     }
 
-    private static void portal(Matrix4f m,Vec3 c,float scale,float seconds) {
-        double radius=30.0*scale;
-        double plane=c.y+1.2;
-        // First draw a vivid 2D aperture MATERIAL ON A 3D WORLD PLANE. It
-        // replaces only the pixels behind this real sky opening, not the screen.
-        RenderSystem.depthMask(true);
-        BufferBuilder backdrop=begin();
-        disc(backdrop,m,c,plane,radius,.995f);
-        draw(backdrop);
-
-        // No tunnel walls: only delicate, separated concentric rings that can
-        // be flown around and that have visible vertical separation/parallax.
+    /**
+     * World-space SKY APERTURE. A single broad filled disk, not a cone,
+     * never an extruded wall. The fragment shader supplies all of the
+     * starfield / cosmic vortex detail. One disk = 96 triangles instead of
+     * thousands of rotating transparent triangles every frame.
+     *
+     * The disk lives at the fixed in-world coordinates where it was opened,
+     * so players may fly up to and through its plane. The sky replacement is
+     * spatial, not a HUD/postprocess texture.
+     */
+    private static void portal(Matrix4f m,Vec3 center,float scale,float seconds) {
         RenderSystem.depthMask(false);
-        BufferBuilder energy=begin();
-        for(int layer=0;layer<9;layer++){
-            double progress=layer/8.0;
-            double y=c.y-19.0+progress*18.7;
-            double r=radius*(.28+.69*progress);
-            double width=(.44+.52*progress)*scale;
-            float alpha=(float)(.58+.21*progress);
-            double phase=seconds*(layer%2==0?.24:-.19)+layer*.55;
-            for(int k=0;k<SEG;k++){
-                // Small gaps give the rings more delicate energy filaments;
-                // the main sky aperture is the separate opaque disc above.
-                if((k+layer*7)%23>=21) continue;
-                double a=2*Math.PI*k/SEG+phase,beta=2*Math.PI*(k+1)/SEG+phase;
-                double i0=r-width,o0=r+width;
-                double x0=c.x+i0*Math.cos(a),z0=c.z+i0*Math.sin(a);
-                double x1=c.x+o0*Math.cos(a),z1=c.z+o0*Math.sin(a);
-                double x2=c.x+i0*Math.cos(beta),z2=c.z+i0*Math.sin(beta);
-                double x3=c.x+o0*Math.cos(beta),z3=c.z+o0*Math.sin(beta);
-                float u0=(float)k/SEG,u1=(float)(k+1)/SEG;
-                tri(energy,m,x0,y,z0,u0,0,x1,y,z1,u0,1,x2,y,z2,u1,0,
-                    .24f,1f,alpha);
-                tri(energy,m,x2,y,z2,u1,0,x1,y,z1,u0,1,x3,y,z3,u1,1,
-                    .24f,1f,alpha);
-            }
-        }
-
-        // Three slim, animated spiral ribbons floating INSIDE the aperture.
-        // Only 0.45-0.7 blocks wide: they never form a solid cone.
-        for(int arm=0;arm<3;arm++){
-            for(int j=0;j<100;j++){
-                double s0=j/100.0,s1=(j+1)/100.0;
-                double y0=c.y-18+18.5*s0,y1=c.y-18+18.5*s1;
-                double r0=radius*(.19+.65*s0),r1=radius*(.19+.65*s1);
-                double a0=arm*2*Math.PI/3+s0*11.5+seconds*.43;
-                double a1=arm*2*Math.PI/3+s1*11.5+seconds*.43;
-                double thick=.23*scale;
-                float u0=(float)s0,u1=(float)s1;
-                double x00=c.x+(r0-thick)*Math.cos(a0),z00=c.z+(r0-thick)*Math.sin(a0);
-                double x01=c.x+(r0+thick)*Math.cos(a0),z01=c.z+(r0+thick)*Math.sin(a0);
-                double x10=c.x+(r1-thick)*Math.cos(a1),z10=c.z+(r1-thick)*Math.sin(a1);
-                double x11=c.x+(r1+thick)*Math.cos(a1),z11=c.z+(r1+thick)*Math.sin(a1);
-                tri(energy,m,x00,y0,z00,u0,0,x01,y0,z01,u0,1,x10,y1,z10,u1,0,.24f,1f,.6f);
-                tri(energy,m,x10,y1,z10,u1,0,x01,y0,z01,u0,1,x11,y1,z11,u1,1,.24f,1f,.6f);
-            }
-        }
-        // Physical outer rim: a smooth, slim ring at the boundary of the sky hole.
-        // Do NOT draw any continuous side wall between inner and outer rings.
-        for(int k=0;k<SEG;k++){
-            double a=2*Math.PI*k/SEG,beta=2*Math.PI*(k+1)/SEG;
-            double pulse=.22*Math.sin(seconds*2+a*6);
-            double inner=radius-.9*scale,outer=radius+(1.0+pulse)*scale;
-            double y=plane-.35;
-            float u0=(float)k/SEG,u1=(float)(k+1)/SEG;
-            tri(energy,m,c.x+inner*Math.cos(a),y,c.z+inner*Math.sin(a),u0,0,
-                c.x+outer*Math.cos(a),y,c.z+outer*Math.sin(a),u0,1,
-                c.x+inner*Math.cos(beta),y,c.z+inner*Math.sin(beta),u1,0,.24f,1f,.96f);
-            tri(energy,m,c.x+inner*Math.cos(beta),y,c.z+inner*Math.sin(beta),u1,0,
-                c.x+outer*Math.cos(a),y,c.z+outer*Math.sin(a),u0,1,
-                c.x+outer*Math.cos(beta),y,c.z+outer*Math.sin(beta),u1,1,.24f,1f,.96f);
-        }
-        draw(energy);
+        BufferBuilder backdrop=begin();
+        disc(backdrop,m,center,center.y,420.0*scale,1.0f);
+        draw(backdrop);
     }
 
     /** Shared, deterministic XY outline for all rift layers (never self-intersecting). */

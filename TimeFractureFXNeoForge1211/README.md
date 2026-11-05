@@ -1,23 +1,44 @@
-# TimeFractureFX 0.5.0 — world-space shader geometry repair
+# TimeFracture 0.8 — NeoForge 1.21.1: stability & architecture repair
 
-NeoForge **1.21.1**, Java 21, client-side preview.
+This is an EXPERIMENTAL progress build. It deliberately does NOT claim to implement independent full-world time layers or true AI player clones.
 
-## Changes from 0.4
+## Fixed this release
+* The sky portal in TimeFractureFX is now a huge, world-anchored, GLSL-filled sky aperture drawn at AFTER_SKY, **not a purple cone** rendered with thousands of transparent walls. Single 96-triangle sky surface, radius 420 blocks, preview placed 96 blocks above the player.
+* Preview limit: one portal, one rift, one window, instead of stacking many copies every command.
+* Ordinary timeline creation does NOT make 21x17x21 displaced islands or cause thousands of synchronous setBlock operations anymore.
+* Ordinary timeline creation does NOT spawn Villagers pretending to be a real player.
+* Recursive lineage, all dimension registry IDs and original X/Y/Z are stored in `layers.tsv`, scoped to the save. This is **metadata only**; isolated chunk & block-entity state and simultaneous per-player views remain unimplemented.
+* Player can inspect metadata with `/timefracture layers` and `/timefracture inspect T-1`. Entry to metadata-only timelines and random intrusion are blocked to avoid falsely teleporting users into a pocket.
+* DEV operator cleanup command `/timefracture dev cleanup-legacy-echoes` removes tagged old Villager proxies from loaded chunks, without touching ordinary villagers.
+* Artifact makes intermittent quiet clock-tick attempts when held (after first GUI open), using built-in Minecraft mechanical sounds.
+* Optional JEI plugin registers a new recipe category with **rotating real block models**, cyclic 3D layer-by-layer guide to the Create chronal condenser structure. Needs JEI installed (19.57.x+ 1.21.1 API).
 
-- Portal no longer has a continuous purple cone. A true world-positioned sky aperture uses the portal GLSL program, surrounded by nine vertically separated narrow, animated energy rings and three slim spiralling ribbons. They have real world X/Y/Z depth.
-- The shader receives a monotonic elapsed-time float (previously a huge UNIX float, which lost sub-second precision).
-- Rift/window use ONE fixed, non-self-intersecting contour shared across the scene and both sides of the border. Width is **0.31 / 0.58 Minecraft blocks** (scaled by opening animation), not a multiplier of the whole aperture radius.
-- Aperture background has its own procedural alternate-world landscape. A live view of an ACTUAL independent timeline is not yet implemented in TimeFracture.
-- Animation: open, close, collapse. Two custom core GLSL shaders are still used; no particle stand-ins.
+## World safety and migration
+Previously created legacy displaced pockets are kept for recovery. Original world and region files are **not automatically deleted**. Existing legacy Create convergence is left available for archived old pocket data only; the newly indexed world-wide layers cannot be merged until an isolated chunk backend is implemented.
 
-## Client commands
+## Commands
+```
+/give @p timefracture:time_artifact
+/give @p timefracture:chronal_core
+/timefracture players
+/timefracture focus <online player>
+/timefracture branch -
+/timefracture branch T-1
+/timefracture tree
+/timefracture layers
+/timefracture inspect T-1
+/timefracture dev cleanup-legacy-echoes
+/tfx preview info
+/tfx preview portal
+/tfx preview rift
+/tfx preview window
+/tfx preview close
+/tfx preview collapse
+/tfx preview stop
+```
 
-`/tfx preview info` — shader-load status.
-`/tfx preview portal` — sky aperture at Y+58.
-`/tfx preview rift` — vertical tear Y+24.
-`/tfx preview window` — smaller tear Y+4.
-`/tfx preview close`, `collapse`, `stop`.
+## Not yet completed
+True world-wide, fully simulated divergent chunk/entity inventories at SAME coordinates; per-player isolated block/world states in multiplayer; skin-preserving player-like AI entities; actual airships across rifts; portal remote-world camera; full pre-split rollback; automatic survival convergence of new world-wide layers. These require substantial new game architecture and cannot be honestly promised as finished in this build.
 
-## Testing
-
-GitHub Actions compiles the project, but **Minecraft in-game visuals, runtime shader resource loading and compatibility with Iris/Sodium still need testing**. Run on a backed-up world and send screenshot/latest.log if problems appear.
+## Verification
+GitHub Actions tests compilation & packaged resources. Actual in-game NeoForge client, JEI interaction, Create integration, Iris/Oculus and performance profiling still need player verification. Keep a world backup and remove older versions of the two mods.
