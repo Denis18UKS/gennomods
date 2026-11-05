@@ -26,6 +26,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import dev.timefracture.create.ChronalCoreBlock;
 import dev.timefracture.create.ChronalCoreBlockEntity;
 import dev.timefracture.layer.LayerCatalog;
+import dev.timefracture.layer.LayerWorlds;
 import java.nio.file.*;
 import java.util.*;
 
@@ -34,6 +35,7 @@ public class TimeFractureMod {
   static Ledger L=new Ledger(Path.of("config","timefracture","branches.tsv"));
   static PocketWorld P; // LEGACY: read-only recovery for previously generated pocket areas
   static LayerCatalog LAYERS;
+  static LayerWorlds WORLDS;
   static AnomalyManager A;
   public static final DeferredRegister.Blocks BLOCKS=DeferredRegister.createBlocks("timefracture");
   public static final DeferredBlock<ChronalCoreBlock> CHRONAL_CORE =
@@ -67,6 +69,7 @@ public class TimeFractureMod {
     // NEVER instantiate or tick villager-based fake player echoes in v0.8.
     // NEVER auto-teleport players into displaced legacy pocket islands.
     NeoForge.EVENT_BUS.addListener(ConvergenceService::tick);
+    NeoForge.EVENT_BUS.addListener(TimeFractureMod::layerTick);
   }
   public static boolean canConverge() { return P!=null && P.count()>=2 && !L.frozen; }
   public static int activePocketCount() { return P==null?0:P.count(); }
@@ -92,29 +95,38 @@ public class TimeFractureMod {
         String parent=StringArgumentType.getString(c,"parent");
         if(LAYERS==null)throw new IllegalStateException("Индекс временных слоёв ещё не загружен");
         if(L.frozen)throw new IllegalStateException("Временное ветвление заморожено");
+        if(L.next>=LayerWorlds.MAX_SLOTS)throw new IllegalStateException(
+            "Лимит активных изолированных временных слоёв: "+LayerWorlds.MAX_SLOTS);
         if(!"-".equals(parent) && LAYERS.find(parent)==null)
             throw new IllegalArgumentException("У родительской линии отсутствует индекс слоёв: "+parent);
         ServerPlayer source=c.getSource().getServer().getPlayerList().getPlayer(f.id);
         if(source==null)throw new IllegalStateException("Игрок больше не онлайн");
         var created=L.add(f.id,f.name,parent,"manual");
         registerLayer(source,created.id,parent);
-        return msg(c.getSource(),"§aСоздана запись слоя "+created.id+
-            " в тех же координатах всех измерений. §eИзолированное хранение чанков в разработке; "+
-            "ни островов, ни телепортаций, ни жителей-двойников не создаётся.");
+        if(WORLDS!=null)WORLDS.queue(source,created.id,parent);
+        return msg(c.getSource(),"§dСоздан слой "+created.id+
+            " с отдельным мировым хранилищем на тех же координатах. "+
+            "Начальная область копируется порциями. "+(WORLDS==null?"Менеджер загрузки отсутствует":WORLDS.status(created.id)));
       }catch(IllegalStateException|IllegalArgumentException ex){return msg(c.getSource(),"§c"+ex.getMessage());}
     })));
     root.then(Commands.literal("enter").then(Commands.argument("line",StringArgumentType.word()).executes(c->{
-      if(!(c.getSource().getEntity() instanceof ServerPlayer p))return msg(c.getSource(),"§cТолько для игрока");
-      String id=StringArgumentType.getString(c,"line");
-      if(LAYERS==null || LAYERS.find(id)==null)return msg(c.getSource(),"§cТакого временного слоя нет: "+id);
-      return msg(c.getSource(),"§eСлой "+id+" зарегистрирован в тех же координатах. "+
-          "Переход пока заблокирован: изоляция чанков/сущностей не готова. "+
-          "Создавать фальшивый остров вместо мира мод больше не будет.");
+      if(!(c.getSource().getEntity() instanceof ServerPlayer player))
+        return msg(c.getSource(),"§cКоманда доступна только игроку");
+      if(WORLDS==null)return msg(c.getSource(),"§cИзолированные миры ещё не загружены");
+      try{
+        String id=StringArgumentType.getString(c,"line");
+        WORLDS.enter(player,id);
+        return 1;
+      }catch(RuntimeException ex){return msg(c.getSource(),"§c"+ex.getMessage());}
     })));
     root.then(Commands.literal("return").executes(c->{
-      if(!(c.getSource().getEntity() instanceof ServerPlayer p))return msg(c.getSource(),"§cТолько для игрока");
-      try {P.leave(p);return 1;}
-      catch(Exception ex){return msg(c.getSource(),"§c"+ex.getMessage());}
+      if(!(c.getSource().getEntity() instanceof ServerPlayer player))
+        return msg(c.getSource(),"§cКоманда доступна только игроку");
+      try{
+        if(WORLDS==null)throw new IllegalStateException("Мировые слои ещё не загружены");
+        WORLDS.leave(player);
+        return 1;
+      }catch(RuntimeException ex){return msg(c.getSource(),"§c"+ex.getMessage());}
     }));
     var anomalies=Commands.literal("anomaly");
     anomalies.then(Commands.literal("on").executes(c->{
@@ -141,8 +153,14 @@ public class TimeFractureMod {
             "§bОбъединение запускается ТОЛЬКО от механизма Create, а не командой. "+
             ConvergenceService.status()))));
     root.then(Commands.literal("layers").executes(c->msg(c.getSource(),
-      "§dЗарегистрированных слоёв: "+(LAYERS==null?0:LAYERS.size())+
-      " · игровая изоляция чанков: НЕ ГОТОВА")));
+      "§dЛиний: "+(LAYERS==null?0:LAYERS.size())+
+      " · готово к входу: "+(WORLDS==null?0:WORLDS.readyCount())+
+      " · загрузок: "+(WORLDS==null?0:WORLDS.pendingCount())+
+      " · доступных слотов: "+LayerWorlds.MAX_SLOTS)));
+    root.then(Commands.literal("layer-status").then(Commands.argument("line",StringArgumentType.word()).executes(c->{
+      String id=StringArgumentType.getString(c,"line");
+      return msg(c.getSource(),WORLDS==null?"§cНет мирового менеджера":WORLDS.status(id));
+    })));
     root.then(Commands.literal("inspect").then(Commands.argument("line",StringArgumentType.word()).executes(c->
       msg(c.getSource(),LAYERS==null?"Индекс не загружен":
           LAYERS.describe(StringArgumentType.getString(c,"line"))))));
@@ -241,12 +259,19 @@ public class TimeFractureMod {
     L=new Ledger(dir.resolve("branches.tsv"));
     P=new PocketWorld(dir.resolve("pockets.tsv")); // legacy stored pockets, not created anymore
     LAYERS=new LayerCatalog(dir.resolve("layers.tsv"));
+    WORLDS=new LayerWorlds(dir.resolve("worlds.tsv"),LAYERS);
     A=new AnomalyManager(dir.resolve("anomalies.txt"));
+  }
+  static void layerTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post e){
+    if(WORLDS!=null)WORLDS.tick(e);
   }
   static void randomTravelTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post e){
     if(A!=null)A.tick(e);
   }
   static void dimensionChanged(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent e){
+    // Travelling between timeline dimensions is NOT an automatic new branch.
+    if(e.getFrom().location().getNamespace().equals("timefracture") ||
+       e.getTo().location().getNamespace().equals("timefracture"))return;
     if(!L.frozen&&e.getEntity() instanceof ServerPlayer p)eventBranch(p,"dimension-change");
   }
   static void importantBlock(net.neoforged.neoforge.event.level.BlockEvent.BreakEvent e){
@@ -268,15 +293,17 @@ public class TimeFractureMod {
   }
 
   static void eventBranch(ServerPlayer subject,String event){
-    if(LAYERS==null||L.frozen)return;
+    if(LAYERS==null||WORLDS==null||L.frozen||L.next>=LayerWorlds.MAX_SLOTS)return;
     if(L.focus.values().stream().noneMatch(f->f.id.equals(subject.getUUID())))return;
     try{
       String prev=L.latest(subject.getUUID());
       String parent=LAYERS.find(prev)==null?"-":prev;
       var record=L.add(subject.getUUID(),subject.getGameProfile().getName(),parent,event);
       registerLayer(subject,record.id,parent);
+      WORLDS.queue(subject,record.id,parent);
       subject.sendSystemMessage(Component.literal("§5[Разветвление времени] §f"+
-          event+" → "+record.id+" · сохранён индекс слоёв без копирования блоков"));
+          event+" → "+record.id+" · создаётся отдельный мир на тех же координатах; "+
+          WORLDS.status(record.id)));
     }catch(RuntimeException ex){
       subject.sendSystemMessage(Component.literal("§c[TimeFracture] Не удалось зарегистрировать событие: "+ex.getMessage()));
     }

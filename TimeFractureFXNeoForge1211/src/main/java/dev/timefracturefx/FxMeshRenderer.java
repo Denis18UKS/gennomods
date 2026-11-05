@@ -53,7 +53,10 @@ public final class FxMeshRenderer {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
-        RenderSystem.enableDepthTest();
+        // Sky-dome must paint over vanilla sky without drawing a cone
+        // in the world depth buffer. Terrain renders after this stage.
+        if(sky)RenderSystem.disableDepthTest();
+        else RenderSystem.enableDepthTest();
         RenderSystem.depthMask(!sky);
         try {
             shader(shader,seconds);
@@ -63,13 +66,14 @@ public final class FxMeshRenderer {
                 if(camera.distanceToSqr(fx.center())>1200.0*1200.0)continue;
                 float amount=phase(fx,now);
                 if(amount<=0f)continue;
-                if(sky)portal(matrix,fx.center(),amount,seconds);
+                if(sky)portal(matrix,camera,amount,seconds);
                 else rift(matrix,fx.center(),amount,fx.type().equals("window"),seconds);
             }
         } finally {
             RenderSystem.depthMask(true);
             RenderSystem.enableCull();
             RenderSystem.disableBlend();
+            RenderSystem.enableDepthTest();
             pose.popPose();
         }
     }
@@ -123,20 +127,47 @@ public final class FxMeshRenderer {
     }
 
     /**
-     * World-space SKY APERTURE. A single broad filled disk, not a cone,
-     * never an extruded wall. The fragment shader supplies all of the
-     * starfield / cosmic vortex detail. One disk = 96 triangles instead of
-     * thousands of rotating transparent triangles every frame.
-     *
-     * The disk lives at the fixed in-world coordinates where it was opened,
-     * so players may fly up to and through its plane. The sky replacement is
-     * spatial, not a HUD/postprocess texture.
+     * A real GLSL SKY DOME, rendered during AFTER_SKY.
+     * Unlike a finite flat disc (which ALWAYS has a visible circular edge),
+     * this camera-centered spherical surface fills all visible sky directions.
+     * It is an in-world render stage, not a screen/UI post-effect.
+     * Physical rifts remain world-anchored in AFTER_PARTICLES.
      */
-    private static void portal(Matrix4f m,Vec3 center,float scale,float seconds) {
+    private static void portal(Matrix4f m,Vec3 camera,float scale,float seconds) {
         RenderSystem.depthMask(false);
-        BufferBuilder backdrop=begin();
-        disc(backdrop,m,center,center.y,420.0*scale,1.0f);
-        draw(backdrop);
+        BufferBuilder dome=begin();
+        final int latCount=18,lonCount=64;
+        final double radius=130.0;
+        for(int y=0;y<latCount;y++){
+            double t0=Math.PI*y/latCount;
+            double t1=Math.PI*(y+1)/latCount;
+            for(int x=0;x<lonCount;x++){
+                double p0=2.0*Math.PI*x/lonCount;
+                double p1=2.0*Math.PI*(x+1)/lonCount;
+                skyTriangle(dome,m,camera,radius,t0,p0,t1,p0,t0,p1,scale);
+                skyTriangle(dome,m,camera,radius,t0,p1,t1,p0,t1,p1,scale);
+            }
+        }
+        draw(dome);
+    }
+
+    private static void skyTriangle(BufferBuilder b,Matrix4f m,Vec3 center,double radius,
+                                    double t0,double p0,double t1,double p1,double t2,double p2,float scale) {
+        skyVertex(b,m,center,radius,t0,p0,scale);
+        skyVertex(b,m,center,radius,t1,p1,scale);
+        skyVertex(b,m,center,radius,t2,p2,scale);
+    }
+
+    private static void skyVertex(BufferBuilder b,Matrix4f m,Vec3 center,double radius,
+                                  double theta,double phi,float scale) {
+        double sin=Math.sin(theta);
+        double dx=sin*Math.cos(phi),dy=Math.cos(theta),dz=sin*Math.sin(phi);
+        // Map zenith -> middle of existing vortex GLSL. No finite radial
+        // screen boundary; mesh continues around the entire camera.
+        float u=(float)(.5+.49*dx);
+        float v=(float)(.5+.49*dz);
+        vertex(b,m,center.x+radius*dx,center.y+radius*dy,center.z+radius*dz,
+            u,v,1f,1f,Math.max(.02f,scale));
     }
 
     /** Shared, deterministic XY outline for all rift layers (never self-intersecting). */
