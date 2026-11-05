@@ -88,7 +88,6 @@ public final class TimeArtifactScreen extends Screen {
 
     @Override
     public void render(GuiGraphics gui,int mouseX,int mouseY,float delta){
-        super.render(gui,mouseX,mouseY,delta);
         int x=(width-396)/2,y=(height-290)/2;
         gui.fill(x-2,y-2,x+398,y+292,BORDER);
         gui.fill(x,y,x+396,y+290,WINDOW);
@@ -102,6 +101,9 @@ public final class TimeArtifactScreen extends Screen {
         if(online.isEmpty()){
             gui.drawCenteredString(font,"На сервере нет полученных игроков",width/2,y+120,0xFFFFA6A6);
         }
+        // Widgets (player list, action buttons, parent ID field) MUST be
+        // rendered after the panel; otherwise the panel occludes them.
+        super.render(gui,mouseX,mouseY,delta);
     }
 
     @Override
