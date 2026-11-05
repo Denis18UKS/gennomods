@@ -10,6 +10,7 @@ This version is an expansion of two separate mods, NOT the complete multiverse d
 - Server-side event tracking for tracked player's death, tamed pet death, boss victory, rare block destruction, dimension change
 - Vanilla villager-based NPC echoes and observer pathfinding + reactive dialogue; dangerous contact triggers non-destructive evacuation/freeze
 - DEV freeze, unfreeze, metadata stabilization, access by UUID
+- Opt-in accidental jumps between existing pockets, with /timefracture anomaly on|off|test; no involuntary default teleportation
 
 ## Important LIMITATIONS
 - NOT fully separate world dimensions, no copies of all chunks in the world, no independent world time or weather

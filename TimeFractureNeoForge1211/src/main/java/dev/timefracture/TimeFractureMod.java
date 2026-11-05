@@ -23,6 +23,7 @@ import java.util.*;
 public class TimeFractureMod {
   static Ledger L=new Ledger(Path.of("config","timefracture","branches.tsv"));
   static PocketWorld P;
+  static AnomalyManager A;
   static final DeferredRegister.Items ITEMS=DeferredRegister.createItems("timefracture");
   static {
     ITEMS.register("time_artifact",()->new Item(new Item.Properties().stacksTo(1)){
@@ -40,6 +41,7 @@ public class TimeFractureMod {
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::dimensionChanged);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::importantBlock);
     NeoForge.EVENT_BUS.addListener(TimeEchoes::tick);
+    NeoForge.EVENT_BUS.addListener(TimeFractureMod::randomTravelTick);
   }
   static UUID actor(net.minecraft.commands.CommandSourceStack s){
     return s.getEntity() instanceof ServerPlayer p ? p.getUUID() : new UUID(0,0);
@@ -83,6 +85,25 @@ public class TimeFractureMod {
       try {P.leave(p);return 1;}
       catch(Exception ex){return msg(c.getSource(),"§c"+ex.getMessage());}
     }));
+    var anomalies=Commands.literal("anomaly");
+    anomalies.then(Commands.literal("on").executes(c->{
+      if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
+        return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
+      A.set(p.getUUID(),true);
+      return msg(c.getSource(),"§dСлучайные переходы включены для тебя");
+    }));
+    anomalies.then(Commands.literal("off").executes(c->{
+      if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
+        return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
+      A.set(p.getUUID(),false);
+      return msg(c.getSource(),"§aСлучайные переходы выключены");
+    }));
+    anomalies.then(Commands.literal("test").executes(c->{
+      if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
+        return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
+      return msg(c.getSource(),A.travel(p,true)?"§5Аномалия создана":"§cНужна хотя бы одна доступная линия");
+    }));
+    root.then(anomalies);
     root.then(Commands.literal("pockets").executes(c->msg(c.getSource(),
       "§dЛокальных временных миров: "+(P==null?0:P.count())+" / "+PocketWorld.MAX)));
     root.then(Commands.literal("tree").executes(c->{
@@ -135,6 +156,10 @@ public class TimeFractureMod {
       .resolve("data").resolve("timefracture");
     L=new Ledger(dir.resolve("branches.tsv"));
     P=new PocketWorld(dir.resolve("pockets.tsv"));
+    A=new AnomalyManager(dir.resolve("anomalies.txt"));
+  }
+  static void randomTravelTick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post e){
+    if(A!=null)A.tick(e);
   }
   static void dimensionChanged(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent e){
     if(!L.frozen&&e.getEntity() instanceof ServerPlayer p)eventBranch(p,"dimension-change");
