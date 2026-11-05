@@ -31,7 +31,7 @@ public final class FxClient {
     private static void commands(RegisterClientCommandsEvent e) {
         var root = Commands.literal("tfx");
         var preview = Commands.literal("preview");
-        for (String type : new String[]{"portal","rift","window","close","collapse","stop","info"}) {
+        for (String type : new String[]{"portal","rift","window","close","collapse","stop","info","where"}) {
             preview.then(Commands.literal(type).executes(c -> {
                 perform(type);
                 return 1;
@@ -51,7 +51,7 @@ public final class FxClient {
                 EFFECTS.removeIf(existing -> existing.type().equals(action));
                 Vec3 origin = mc.player.position();
                 double height = switch(action) {
-                    case "portal" -> 96.0;
+                    case "portal" -> 60.0;
                     case "rift" -> 24.0;
                     default -> 4.0;
                 };
@@ -70,6 +70,11 @@ public final class FxClient {
             case "stop" -> {
                 EFFECTS.clear();
                 msg("§d[TimeFractureFX] §fВсе тестовые эффекты удалены.");
+            }
+            case "where" -> {
+                for(Fx obj:EFFECTS)
+                    msg("§d[FX] §f"+obj.type()+" @ "+Math.round(obj.center().x)+
+                        " "+Math.round(obj.center().y)+" "+Math.round(obj.center().z));
             }
             case "info" -> msg("§d[TimeFractureFX] §fОбъектов: "+EFFECTS.size()+
                    " · GLSL portal="+(FxShaders.PORTAL!=null)+" rift="+(FxShaders.RIFT!=null));

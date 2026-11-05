@@ -63,7 +63,14 @@ public final class FxMeshRenderer {
                 if(camera.distanceToSqr(fx.center())>1200.0*1200.0)continue;
                 float amount=phase(fx,now);
                 if(amount<=0f)continue;
-                if(sky)portal(matrix,fx.center(),amount,seconds);
+                if(sky){
+                    Vec3 relative=fx.center().subtract(camera);
+                    var centerUniform=shader.getUniform("PortalCenter");
+                    if(centerUniform!=null)centerUniform.set((float)relative.x,(float)relative.y,(float)relative.z);
+                    var radiusUniform=shader.getUniform("PortalRadius");
+                    if(radiusUniform!=null)radiusUniform.set(112.0f*amount);
+                    portal(matrix,fx.center(),amount,seconds);
+                }
                 else rift(matrix,fx.center(),amount,fx.type().equals("window"),seconds);
             }
         } finally {
@@ -122,21 +129,33 @@ public final class FxMeshRenderer {
         }
     }
 
-    /**
-     * World-space SKY APERTURE. A single broad filled disk, not a cone,
-     * never an extruded wall. The fragment shader supplies all of the
-     * starfield / cosmic vortex detail. One disk = 96 triangles instead of
-     * thousands of rotating transparent triangles every frame.
-     *
-     * The disk lives at the fixed in-world coordinates where it was opened,
-     * so players may fly up to and through its plane. The sky replacement is
-     * spatial, not a HUD/postprocess texture.
-     */
+    /** Fixed 3D world-space shell. GLSL raymarches through volume, no flat billboard. */
     private static void portal(Matrix4f m,Vec3 center,float scale,float seconds) {
+        int latitude=18,longitude=36;
+        double radius=112.0*scale;
         RenderSystem.depthMask(false);
-        BufferBuilder backdrop=begin();
-        disc(backdrop,m,center,center.y,420.0*scale,1.0f);
-        draw(backdrop);
+        BufferBuilder mesh=begin();
+        for(int j=0;j<latitude;j++){
+            double a0=Math.PI*j/latitude,a1=Math.PI*(j+1)/latitude;
+            for(int k=0;k<longitude;k++){
+                double b0=2*Math.PI*k/longitude,b1=2*Math.PI*(k+1)/longitude;
+                double x00=center.x+radius*Math.sin(a0)*Math.cos(b0);
+                double y00=center.y+radius*Math.cos(a0);
+                double z00=center.z+radius*Math.sin(a0)*Math.sin(b0);
+                double x01=center.x+radius*Math.sin(a0)*Math.cos(b1);
+                double z01=center.z+radius*Math.sin(a0)*Math.sin(b1);
+                double x10=center.x+radius*Math.sin(a1)*Math.cos(b0);
+                double y10=center.y+radius*Math.cos(a1);
+                double z10=center.z+radius*Math.sin(a1)*Math.sin(b0);
+                double x11=center.x+radius*Math.sin(a1)*Math.cos(b1);
+                double z11=center.z+radius*Math.sin(a1)*Math.sin(b1);
+                float u0=(float)k/longitude,u1=(float)(k+1)/longitude;
+                float v0=(float)j/latitude,v1=(float)(j+1)/latitude;
+                tri(mesh,m,x00,y00,z00,u0,v0,x10,y10,z10,u0,v1,x01,y00,z01,u1,v0,1f,1f,1f);
+                tri(mesh,m,x01,y00,z01,u1,v0,x10,y10,z10,u0,v1,x11,y10,z11,u1,v1,1f,1f,1f);
+            }
+        }
+        draw(mesh);
     }
 
     /** Shared, deterministic XY outline for all rift layers (never self-intersecting). */
