@@ -1,0 +1,34 @@
+name: Build Create Aeronautics Ungluer
+on:
+  push:
+    branches:
+      - 'build/create-aeronautics-ungluer'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract mod source project
+        run: |
+          mkdir -p ungluer
+          tar -xJf ungluer-src.tar.xz -C ungluer
+          find ungluer -maxdepth 2 -type f
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+      - name: Build NeoForge 1.21.1 addon
+        run: gradle -p ungluer clean build --stacktrace --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Create-Aeronautics-Ungluer-NeoForge-1.21.1
+          path: ungluer/build/libs/*.jar
+          if-no-files-found: error
