@@ -78,6 +78,14 @@
       "values": [
         112
       ]
+    },
+    {
+      "name": "Samples",
+      "type": "float",
+      "count": 1,
+      "values": [
+        2
+      ]
     }
   ]
 }

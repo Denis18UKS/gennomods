@@ -26,6 +26,44 @@ import org.joml.Matrix4f;
 public final class FxMeshRenderer {
     private static final int SEG = 96;
     private static final long START_NANOS=System.nanoTime();
+    // Autoscale the cost of the *world-space* volumetric shader based on
+    // actual frame intervals. Gradually restore detail after FPS stabilizes.
+    private static int adaptiveSamples=2;
+    private static int chosenSamples=-1; // -1 AUTO, 0 OFF, 1..4 fixed
+    private static long lastFrameNanos=0;
+    private static int slowFrames=0, fastFrames=0;
+    private static double measuredFps=60.0;
+    private static long skippedFrames=0;
+
+    static int currentSamples(){return chosenSamples>=0?chosenSamples:adaptiveSamples;}
+    static void setSamples(int requested){chosenSamples=Math.max(-1,Math.min(4,requested));}
+    static String perf(){
+        return "3D quality="+(chosenSamples<0?"AUTO":"MANUAL")+" "+
+           currentSamples()+"/4 · FPS≈"+Math.round(measuredFps)+
+           " · frames bypassed="+skippedFrames;
+    }
+    private static void observeFrame(long now){
+        if(lastFrameNanos!=0){
+            long dt=now-lastFrameNanos;
+            if(dt>0&&dt<2_000_000_000L){
+                double fps=1_000_000_000.0/dt;
+                measuredFps=measuredFps*.90+Math.min(fps,240.0)*.10;
+                if(chosenSamples<0){
+                    if(dt>34_000_000L){slowFrames++;fastFrames=0;}
+                    else if(dt<17_000_000L){fastFrames++;slowFrames=0;}
+                    else {slowFrames=0;fastFrames=0;}
+                    if(slowFrames>=4 && adaptiveSamples>1){
+                        adaptiveSamples--;slowFrames=0;
+                    }
+                    if(fastFrames>=160 && adaptiveSamples<4){
+                        adaptiveSamples++;fastFrames=0;
+                    }
+                }
+            }
+        }
+        lastFrameNanos=now;
+    }
+
     private FxMeshRenderer() {}
 
     /**
@@ -37,7 +75,9 @@ public final class FxMeshRenderer {
     public static void render(RenderLevelStageEvent e) {
         boolean sky=e.getStage()==RenderLevelStageEvent.Stage.AFTER_SKY;
         boolean world=e.getStage()==RenderLevelStageEvent.Stage.AFTER_PARTICLES;
+        if(sky)observeFrame(System.nanoTime());
         if(!sky&&!world) return;
+        if(sky && currentSamples()==0){skippedFrames++;return;}
         if(FxClient.effects().isEmpty()) return;
         ShaderInstance shader=sky?FxShaders.PORTAL:FxShaders.RIFT;
         if(shader==null) return;
@@ -60,7 +100,8 @@ public final class FxMeshRenderer {
             for(FxClient.Fx fx:FxClient.effects()) {
                 boolean isPortal=fx.type().equals("portal");
                 if(isPortal!=sky)continue;
-                if(camera.distanceToSqr(fx.center())>1200.0*1200.0)continue;
+                // Never render a huge volume across unrelated distant chunks.
+                if(camera.distanceToSqr(fx.center())>650.0*650.0)continue;
                 float amount=phase(fx,now);
                 if(amount<=0f)continue;
                 if(sky){
@@ -69,6 +110,8 @@ public final class FxMeshRenderer {
                     if(centerUniform!=null)centerUniform.set((float)relative.x,(float)relative.y,(float)relative.z);
                     var radiusUniform=shader.getUniform("PortalRadius");
                     if(radiusUniform!=null)radiusUniform.set(112.0f*amount);
+                    var samplesUniform=shader.getUniform("Samples");
+                    if(samplesUniform!=null)samplesUniform.set((float)currentSamples());
                     portal(matrix,fx.center(),amount,seconds);
                 }
                 else rift(matrix,fx.center(),amount,fx.type().equals("window"),seconds);
@@ -131,7 +174,7 @@ public final class FxMeshRenderer {
 
     /** Fixed 3D world-space shell. GLSL raymarches through volume, no flat billboard. */
     private static void portal(Matrix4f m,Vec3 center,float scale,float seconds) {
-        int latitude=18,longitude=36;
+        int latitude=10,longitude=28;
         double radius=112.0*scale;
         RenderSystem.depthMask(false);
         BufferBuilder mesh=begin();

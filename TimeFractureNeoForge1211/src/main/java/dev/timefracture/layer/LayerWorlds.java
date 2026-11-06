@@ -1,6 +1,9 @@
 package dev.timefracture.layer;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -35,7 +38,13 @@ import java.util.*;
  */
 public final class LayerWorlds {
     public static final int MAX_SLOTS=8;
-    private static final int BLOCKS_PER_TICK=256;
+    // Two independent guards: bound block count AND elapsed nanoseconds.
+    // Chunk *generation* is staged through futures rather than getBlockState.
+    private static final int BLOCKS_PER_TICK=64;
+    private static final long NANOSECONDS_PER_TICK=1_000_000L; // ~1ms
+    private long lastCopyMicros=0L;
+    private long worstCopyMicros=0L;
+    private long busyTicks=0L;
     private final Path doneFile;
     private final Set<String> completed=new HashSet<>();
     private final ArrayDeque<CopyJob> pending=new ArrayDeque<>();
@@ -52,6 +61,9 @@ public final class LayerWorlds {
         final BlockPos position;
         final UUID originPlayer;
         int cursor=0,changed=0,blockEntities=0;
+        boolean loadingRequested=false;
+        java.util.concurrent.CompletableFuture<?> parentFuture,childFuture;
+        long waitTicks=0;
         CopyJob(String id,String dimensionKey,ResourceKey<Level> parent,
                 ResourceKey<Level> child,BlockPos position,UUID player) {
             this.id=id;this.dimensionKey=dimensionKey;this.parent=parent;
@@ -103,8 +115,10 @@ public final class LayerWorlds {
 
     public synchronized String status(){
         var job=pending.peekFirst();
-        return "готовых снимков: "+completed.size()+", очередь: "+pending.size()+
-            (job==null?"":"; "+job.id+"/"+job.dimensionKey+" "+job.cursor+" блоков");
+        return "снимков: "+completed.size()+", очередь: "+pending.size()+
+            (job==null?"":"; "+job.id+"/"+job.dimensionKey+" "+job.cursor+" блоков")+
+            "; нагрузка копирования: "+lastCopyMicros+" мкс/тик (максимум "+
+            worstCopyMicros+" мкс), активных тиков: "+busyTicks;
     }
 
     public synchronized void enqueue(ServerPlayer subject,String id,String parent,BlockPos anchor){
@@ -213,6 +227,41 @@ public final class LayerWorlds {
             return;
         }
 
+        int chunkX=job.position.getX()>>4,chunkZ=job.position.getZ()>>4;
+        ChunkPos chunkPos=new ChunkPos(chunkX,chunkZ);
+        // PORTAL tickets keep the exact chunk around only while the copy
+        // operates. The tickets are removed afterwards or expire naturally.
+        // Futures begin chunk generation without forcing a synchronous
+        // getChunk() call in our per-tick copy loop.
+        if(!job.loadingRequested){
+            job.loadingRequested=true;
+            parent.getChunkSource().addRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
+            child.getChunkSource().addRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
+            job.parentFuture=parent.getChunkSource().getChunkFuture(chunkX,chunkZ,ChunkStatus.FULL,true);
+            job.childFuture=child.getChunkSource().getChunkFuture(chunkX,chunkZ,ChunkStatus.FULL,true);
+            return; // NEVER read blocks in the initial generation-request tick
+        }
+        job.waitTicks++;
+        if(job.waitTicks%120==0){
+            parent.getChunkSource().addRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
+            child.getChunkSource().addRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
+        }
+        if(!job.parentFuture.isDone()||!job.childFuture.isDone())return;
+        if(job.parentFuture.isCompletedExceptionally()||job.childFuture.isCompletedExceptionally()){
+            pending.removeFirst();
+            enqueued.remove(copyKey(job.id,job.dimensionKey));
+            say(server,job.originPlayer,"§cОшибка фоновой подготовки чанка для "+job.id);
+            return;
+        }
+        if(parent.getChunkSource().getChunkNow(chunkX,chunkZ)==null ||
+           child.getChunkSource().getChunkNow(chunkX,chunkZ)==null){
+            // No accidental synchronous chunk generation in the copy phase.
+            if(job.waitTicks%100==0)
+                say(server,job.originPlayer,"§eОжидание загруженных чанков "+job.id+
+                    ", сервер продолжает отвечать...");
+            return;
+        }
+
         final int minY=Math.max(parent.getMinBuildHeight(),child.getMinBuildHeight());
         final int maxY=Math.min(parent.getMaxBuildHeight(),child.getMaxBuildHeight());
         final int volume=(maxY-minY)*256;
@@ -221,8 +270,10 @@ public final class LayerWorlds {
         }
         final int baseX=job.position.getX()&~15;
         final int baseZ=job.position.getZ()&~15;
+        long started=System.nanoTime();
         try{
             for(int n=0;n<BLOCKS_PER_TICK&&job.cursor<volume;n++){
+                if(n>0 && System.nanoTime()-started>=NANOSECONDS_PER_TICK)break;
                 int i=job.cursor++;
                 int y=minY+i/256;
                 int x=baseX+(i%16);
@@ -247,6 +298,8 @@ public final class LayerWorlds {
                 }
             }
             if(job.cursor>=volume){
+                parent.getChunkSource().removeRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
+                child.getChunkSource().removeRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
                 String mark=copyKey(job.id,job.dimensionKey);
                 completed.add(mark);
                 persist();
@@ -265,10 +318,17 @@ public final class LayerWorlds {
                 }
             }
         }catch(Exception ex){
+            parent.getChunkSource().removeRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
+            child.getChunkSource().removeRegionTicket(TicketType.PORTAL,chunkPos,2,job.position);
             pending.removeFirst();
             enqueued.remove(copyKey(job.id,job.dimensionKey));
             say(server,job.originPlayer,"§cОшибка снимка "+job.id+": "+ex.getMessage()+
                 ". Частичный снимок не считается завершённым и при следующем входе будет подготовлен заново.");
+        }finally {
+            long micros=(System.nanoTime()-started)/1000L;
+            lastCopyMicros=micros;
+            worstCopyMicros=Math.max(worstCopyMicros,micros);
+            busyTicks++;
         }
     }
 

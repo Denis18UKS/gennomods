@@ -4,6 +4,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -14,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /** Local dev commands. Effects are real world-space meshes, never screen overlays. */
 public final class FxClient {
     private static final List<Fx> EFFECTS = new CopyOnWriteArrayList<>();
+    private static ResourceKey<Level> anchorDimension;
     record Fx(String type, Vec3 center, long born, long ending, boolean collapse) {}
     static List<Fx> effects() { return EFFECTS; }
 
@@ -56,6 +59,12 @@ public final class FxClient {
                     default -> 4.0;
                 };
                 // All anchors live in absolute world coordinates, not relative to camera.
+                // Anchor never changes with camera position/rotation.
+                // Keep FX worlds separate to avoid stale geometry in the
+                // next dimension after traveling through a timeline.
+                if(anchorDimension!=null && !mc.level.dimension().equals(anchorDimension))
+                    EFFECTS.clear();
+                anchorDimension=mc.level.dimension();
                 EFFECTS.add(new Fx(action, origin.add(0, height, 0), now, 0, false));
                 msg("§d[TimeFractureFX] §a"+action+" · "+(action.equals("portal")?"небесная воронка без конуса":"3D-разлом")+" · Y+"+(int)height);
             }
@@ -69,6 +78,7 @@ public final class FxClient {
             }
             case "stop" -> {
                 EFFECTS.clear();
+                anchorDimension=null;
                 msg("§d[TimeFractureFX] §fВсе тестовые эффекты удалены.");
             }
             case "where" -> {
@@ -85,6 +95,12 @@ public final class FxClient {
         var mc = Minecraft.getInstance();
         if (mc.level==null || mc.player==null) {
             EFFECTS.clear();
+            anchorDimension=null;
+            return;
+        }
+        if(anchorDimension!=null && !anchorDimension.equals(mc.level.dimension())){
+            EFFECTS.clear();
+            anchorDimension=null;
             return;
         }
         long now=System.currentTimeMillis();
