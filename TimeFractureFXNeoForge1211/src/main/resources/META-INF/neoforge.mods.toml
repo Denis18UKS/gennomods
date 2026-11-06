@@ -3,7 +3,7 @@ loaderVersion="[1,)"
 license="MIT"
 [[mods]]
 modId="timefracturefx"
-version="0.10.0-worldlocked"
+version="0.11.0-bound-rifts"
 displayName="TimeFractureFX"
 description='''NeoForge 1.21.1 ALPHA. Runtime world-space 3D shader portals and rifts. Windows show procedural alternate landscapes; not live dimensions.'''
 [[dependencies.timefracturefx]]

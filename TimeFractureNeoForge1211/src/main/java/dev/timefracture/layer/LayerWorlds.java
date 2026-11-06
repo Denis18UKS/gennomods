@@ -306,6 +306,27 @@ public final class LayerWorlds {
                 pending.removeFirst();enqueued.remove(mark);
                 say(server,job.originPlayer,"§aСнимок чанка "+job.id+" готов: "+
                     job.changed+" изменённых блоков, "+job.blockEntities+" блок-сущностей.");
+                // Rare autonomous echo. NOT a villager proxy; the entity has
+                // its own UUID, persistent player model, equipment, goals and
+                // one-time saved texture property. Only 20% of new layers get
+                // a spawned echo, so encounters are NOT guaranteed.
+                ServerPlayer original=server.getPlayerList().getPlayer(job.originPlayer);
+                if(original!=null && child.getRandom().nextInt(5)==0){
+                    dev.timefracture.EchoPlayerEntity echo=
+                        dev.timefracture.TimeFractureMod.ECHO_PLAYER.get().create(child);
+                    if(echo!=null){
+                        int baseX=job.position.getX()&~15;
+                        int baseZ=job.position.getZ()&~15;
+                        int sx=baseX+2,sz=baseZ+2;
+                        if(Math.abs(sx-job.position.getX())<5) sx=baseX+13;
+                        if(Math.abs(sz-job.position.getZ())<5) sz=baseZ+13;
+                        int sy=child.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,sx,sz);
+                        echo.initializeFrom(original,job.id);
+                        echo.setPos(sx+.5,sy,sz+.5);
+                        child.addFreshEntity(echo);
+                    }
+                }
+
                 for(var it=requested.entrySet().iterator();it.hasNext();){
                     var e=it.next();
                     if(!e.getValue().equals(job.id))continue;

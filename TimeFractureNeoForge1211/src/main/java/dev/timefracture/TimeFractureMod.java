@@ -19,6 +19,10 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
@@ -38,6 +42,13 @@ public class TimeFractureMod {
   static LayerWorlds TRAVEL;
   static RiftGates GATES;
   static AnomalyManager A;
+  public static final DeferredRegister<EntityType<?>> ENTITY_TYPES=
+      DeferredRegister.create(Registries.ENTITY_TYPE,"timefracture");
+  public static final DeferredHolder<EntityType<?>,EntityType<EchoPlayerEntity>> ECHO_PLAYER=
+      ENTITY_TYPES.register("echo_player",()->
+          EntityType.Builder.of(EchoPlayerEntity::new,MobCategory.CREATURE)
+            .sized(.6f,1.8f).clientTrackingRange(10).updateInterval(3)
+            .build("timefracture:echo_player"));
   public static final DeferredRegister.Blocks BLOCKS=DeferredRegister.createBlocks("timefracture");
   public static final DeferredBlock<ChronalCoreBlock> CHRONAL_CORE =
       BLOCKS.register("chronal_core",()->new ChronalCoreBlock(
@@ -64,6 +75,8 @@ public class TimeFractureMod {
     });
   }
   public TimeFractureMod(IEventBus bus){
+    ENTITY_TYPES.register(bus);
+    bus.addListener(TimeFractureMod::entityAttributes);
     BLOCKS.register(bus);
     BLOCK_ENTITIES.register(bus);
     ITEMS.register(bus);
@@ -78,6 +91,10 @@ public class TimeFractureMod {
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::layerTicks);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::gateTicks);
   }
+  private static void entityAttributes(EntityAttributeCreationEvent event){
+    event.put(ECHO_PLAYER.get(),EchoPlayerEntity.attributes().build());
+  }
+
   public static boolean canConverge() { return P!=null && P.count()>=2 && !L.frozen; }
   public static int activePocketCount() { return P==null?0:P.count(); }
   public static boolean isFrozen() {return L.frozen;}
@@ -187,6 +204,19 @@ public class TimeFractureMod {
     admin.then(Commands.literal("grant").then(Commands.argument("player",EntityArgument.player()).executes(c->{
       var p=EntityArgument.getPlayer(c,"player");L.devs.add(p.getUUID());L.save();return msg(c.getSource(),"DEV+: "+p.getName().getString());
     })));
+    admin.then(Commands.literal("echo").then(Commands.literal("summon")
+        .then(Commands.argument("player",EntityArgument.player()).executes(c->{
+        if(!(c.getSource().getEntity() instanceof ServerPlayer invoking))
+            return msg(c.getSource(),"§cКоманда требует присутствия оператора в мире");
+        ServerPlayer original=EntityArgument.getPlayer(c,"player");
+        EchoPlayerEntity echo=ECHO_PLAYER.get().create(invoking.serverLevel());
+        if(echo==null)return msg(c.getSource(),"§cНе удалось создать альтернативную личность");
+        echo.initializeFrom(original,"T-DEV");
+        echo.setPos(invoking.getX()+5,invoking.getY(),invoking.getZ()+5);
+        invoking.serverLevel().addFreshEntity(echo);
+        return msg(c.getSource(),"§dСоздана отдельная сущность-двойник игрока "+
+           original.getName().getString()+" (скин сохранён, ИИ базовый)");
+    }))));
     admin.then(Commands.literal("cleanup-legacy-echoes").executes(c->{
       int removed=0;
       for(var level:c.getSource().getServer().getAllLevels()){

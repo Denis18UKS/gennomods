@@ -26,3 +26,12 @@ This is NOT a complete multiverse. The engine still inherits one initial chunk p
 
 ## World safety
 Never test on the only copy of a world. The mod preserves old save regions but it has NOT been tested in an actual interactive client by this build system. GitHub Actions compile and server smoke prove less than real-world multiplayer and GPU integration testing.
+
+## Additional improvement: alternative player avatars (v0.11.1)
+- Separate **EchoPlayerEntity** with a humanoid player model. This is NOT a vanilla Villager; it has its own UUID and persists in layer region files.
+- When first chunk snapshot finishes, a doppelganger has an 20% spawn chance; meeting yourself is NOT guaranteed.
+- Captures current GameProfile texture property at creation and stores it in NBT, rather than following subsequent original-player skin changes. Skin download is asynchronous client-side.
+- Basic AI: pathfinding, exploration, looking at players, defense, and fighting hostile mobs. Combat experience stored persistently.
+- Contact with the ORIGINAL UUID at 1.5-block distance freezes future branching and attempts an immediate safe return (paradox).
+- OP test: `/timefracture dev echo summon <online-player>`.
+- **Not a fully intelligent autonomous AI-PLAYER.** Doesn't yet place or mine blocks, use Create, pilot airships, invent technology, or maintain long-term independent plans.

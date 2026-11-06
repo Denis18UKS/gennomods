@@ -1,5 +1,6 @@
 {
   "item.timefracture.time_artifact": "Time Fracture Artifact",
   "block.timefracture.chronal_core": "Create Chronal Condenser",
-  "block.timefracture.rift_gate": "Physical Temporal Rift"
+  "block.timefracture.rift_gate": "Physical Temporal Rift",
+  "entity.timefracture.echo_player": "Alternate Player"
 }
