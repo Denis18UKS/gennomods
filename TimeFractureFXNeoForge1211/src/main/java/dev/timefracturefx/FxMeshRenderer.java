@@ -126,7 +126,7 @@ public final class FxMeshRenderer {
                     var centerUniform=shader.getUniform("PortalCenter");
                     if(centerUniform!=null)centerUniform.set((float)relative.x,(float)relative.y,(float)relative.z);
                     var radiusUniform=shader.getUniform("PortalRadius");
-                    if(radiusUniform!=null)radiusUniform.set(112.0f*amount);
+                    if(radiusUniform!=null)radiusUniform.set(256.0f*amount);
                     var samplesUniform=shader.getUniform("Samples");
                     if(samplesUniform!=null)samplesUniform.set((float)currentSamples());
                     portal(matrix,fx.center(),amount,seconds);
@@ -194,7 +194,7 @@ public final class FxMeshRenderer {
     /** Fixed 3D world-space shell. GLSL raymarches through volume, no flat billboard. */
     private static void portal(Matrix4f m,Vec3 center,float scale,float seconds) {
         int latitude=10,longitude=28;
-        double radius=112.0*scale;
+        double radius=256.0*scale;
         RenderSystem.depthMask(false);
         BufferBuilder mesh=begin();
         for(int j=0;j<latitude;j++){

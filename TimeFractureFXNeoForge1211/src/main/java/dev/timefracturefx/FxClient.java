@@ -58,7 +58,7 @@ public final class FxClient {
                 EFFECTS.removeIf(existing -> existing.type().equals(action));
                 Vec3 origin = mc.player.position();
                 double height = switch(action) {
-                    case "portal" -> 60.0;
+                    case "portal" -> 96.0;
                     case "rift" -> 24.0;
                     default -> 4.0;
                 };
