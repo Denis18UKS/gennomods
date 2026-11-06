@@ -35,7 +35,7 @@ public final class EchoPlayerRenderer extends HumanoidMobRenderer<EchoPlayerEnti
         String id=echo.subjectId(),name=echo.subjectName();
         UUID uuid;
         try{uuid=UUID.fromString(id);}catch(Exception ex){uuid=echo.getUUID();}
-        ResourceLocation fallback=DefaultPlayerSkin.getDefaultSkin(uuid).texture();
+        ResourceLocation fallback=DefaultPlayerSkin.get(uuid).texture();
         String value=echo.frozenSkinValue();
         if(value.isBlank())return fallback;
         String key=value+"#"+echo.frozenSkinSignature();

@@ -315,11 +315,11 @@ public final class LayerWorlds {
                     dev.timefracture.EchoPlayerEntity echo=
                         dev.timefracture.TimeFractureMod.ECHO_PLAYER.get().create(child);
                     if(echo!=null){
-                        int baseX=job.position.getX()&~15;
-                        int baseZ=job.position.getZ()&~15;
-                        int sx=baseX+2,sz=baseZ+2;
-                        if(Math.abs(sx-job.position.getX())<5) sx=baseX+13;
-                        if(Math.abs(sz-job.position.getZ())<5) sz=baseZ+13;
+                        int echoChunkX=job.position.getX()&~15;
+                        int echoChunkZ=job.position.getZ()&~15;
+                        int sx=echoChunkX+2,sz=echoChunkZ+2;
+                        if(Math.abs(sx-job.position.getX())<5) sx=echoChunkX+13;
+                        if(Math.abs(sz-job.position.getZ())<5) sz=echoChunkZ+13;
                         int sy=child.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,sx,sz);
                         echo.initializeFrom(original,job.id);
                         echo.setPos(sx+.5,sy,sz+.5);
