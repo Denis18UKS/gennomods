@@ -1,7 +1,7 @@
-name: TimeFracture 0.9 Playable Layer Slots and Volumetric Portal
+name: TimeFracture 0.10 FPS-Safe World-Locked Volumetric Portal
 on:
   push:
-    branches: [timefracture-v09-real-layer-dimensions]
+    branches: [timefracture-v010-fps-locked-world-portal]
   workflow_dispatch:
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: TimeFracture-0.9-Playable-Layers-1.21.1
+          name: TimeFracture-0.10-FPS-WorldLocked-1.21.1
           path: |
             TimeFractureNeoForge1211/build/libs/*.jar
             TimeFractureFXNeoForge1211/build/libs/*.jar
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: TimeFracture-0.9-Playable-Layers-1.21.1-SOURCES
+          name: TimeFracture-0.10-FPS-WorldLocked-1.21.1-SOURCES
           path: |
             TimeFracture-Source-NeoForge-1.21.1.zip
             TimeFractureFX-Source-NeoForge-1.21.1.zip

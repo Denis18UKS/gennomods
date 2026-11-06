@@ -2,7 +2,7 @@ name: TimeFracture Dedicated Server Smoke Test
 on:
   workflow_dispatch:
   push:
-    branches: [timefracture-v09-real-layer-dimensions]
+    branches: [timefracture-v010-fps-locked-world-portal]
 jobs:
   server-boot:
     runs-on: ubuntu-latest
