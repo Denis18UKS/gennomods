@@ -34,13 +34,16 @@ public final class FxMeshRenderer {
     private static int slowFrames=0, fastFrames=0;
     private static double measuredFps=60.0;
     private static long skippedFrames=0;
+    private static long emergencyUntil=0;
+    private static int criticalFrames=0;
 
     static int currentSamples(){return chosenSamples>=0?chosenSamples:adaptiveSamples;}
     static void setSamples(int requested){chosenSamples=Math.max(-1,Math.min(4,requested));}
     static String perf(){
         return "3D quality="+(chosenSamples<0?"AUTO":"MANUAL")+" "+
            currentSamples()+"/4 · FPS≈"+Math.round(measuredFps)+
-           " · frames bypassed="+skippedFrames;
+           " · пропущено="+skippedFrames+
+           (System.nanoTime()<emergencyUntil?" · SAFETY PAUSE (5s)":"");
     }
     private static void observeFrame(long now){
         if(lastFrameNanos!=0){
@@ -49,6 +52,17 @@ public final class FxMeshRenderer {
                 double fps=1_000_000_000.0/dt;
                 measuredFps=measuredFps*.90+Math.min(fps,240.0)*.10;
                 if(chosenSamples<0){
+                    // Automatic circuit breaker for GPU freezes: disable
+                    // the preview volume for five seconds after repeated
+                    // severe stalls and retry at one volumetric sample.
+                    if(now>=emergencyUntil && dt>180_000_000L){
+                        criticalFrames++;
+                        if(criticalFrames>=3){
+                            emergencyUntil=now+5_000_000_000L;
+                            adaptiveSamples=1;
+                            criticalFrames=0;
+                        }
+                    }else if(dt<100_000_000L){criticalFrames=0;}
                     if(dt>34_000_000L){slowFrames++;fastFrames=0;}
                     else if(dt<17_000_000L){fastFrames++;slowFrames=0;}
                     else {slowFrames=0;fastFrames=0;}
@@ -77,7 +91,10 @@ public final class FxMeshRenderer {
         boolean world=e.getStage()==RenderLevelStageEvent.Stage.AFTER_PARTICLES;
         if(sky)observeFrame(System.nanoTime());
         if(!sky&&!world) return;
-        if(sky && currentSamples()==0){skippedFrames++;return;}
+        if(sky && (currentSamples()==0 || System.nanoTime()<emergencyUntil)){
+            skippedFrames++;
+            return;
+        }
         if(FxClient.effects().isEmpty()) return;
         ShaderInstance shader=sky?FxShaders.PORTAL:FxShaders.RIFT;
         if(shader==null) return;
