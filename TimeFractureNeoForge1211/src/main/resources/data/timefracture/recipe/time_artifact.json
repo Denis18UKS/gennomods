@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    "CAC",
+    "EME",
+    "CAC"
+  ],
+  "key": {
+    "C": {
+      "item": "minecraft:copper_ingot"
+    },
+    "A": {
+      "item": "minecraft:amethyst_shard"
+    },
+    "E": {
+      "item": "minecraft:echo_shard"
+    },
+    "M": {
+      "item": "minecraft:clock"
+    }
+  },
+  "result": {
+    "id": "timefracture:time_artifact",
+    "count": 1
+  }
+}

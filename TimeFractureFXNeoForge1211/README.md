@@ -1,31 +1,28 @@
-# TimeFracture 0.10.0 — performance guard and fixed-world 3D portal (NeoForge 1.21.1)
+# TimeFracture 0.11 (EXPERIMENTAL) — NeoForge 1.21.1
 
-## Main priorities
-- PREVENT LARGE TPS SPIKES: branch snapshot preparation requests chunk futures, avoids blocking getChunk() in the copy loop, and copies no more than 64 blocks or 1 ms of work per server tick. Loaded source/target chunks are required before copying. Portal chunk tickets are released after the job.
-- FPS safety: volumetric portal starts at 2 samples, auto-scales between 1 and 4 samples based on measured frame intervals. Second costly 3D noise is skipped below 3 samples.
-- Emergency GPU circuit breaker: after three consecutive 180+ ms frame gaps, pause expensive portal rendering for 5 seconds then resume with a single sample.
-- World anchored: portal center is captured as XYZ exactly when /tfx preview portal is entered. It never follows the camera position or rotation. Rendering uses vertex coordinates and center in the SAME camera-relative coordinate system; actual world location is stable.
-- Preview FX is isolated to the dimension where the portal was opened. Traveling into another timeline clears the old previews rather than drawing stale geometry.
-- 3D sphere mesh reduced from 18x36 to 10x28 segments to limit CPU overhead.
-- FPS controls: /tfx preview perf, /tfx preview auto, /tfx preview low, /tfx preview medium, /tfx preview high, /tfx preview off, /tfx preview where.
-- Layer snapshot profiling: /timefracture layers now shows copy progress, last and worst microseconds spent copying blocks per tick.
+## Delivered
+* Physical, player-traversable server-side rift gates in exact world coordinates. Open with `/timefracture gate open T-1` while holding the time artifact (creative users are exempt). The gate never moves with the player's camera.
+* Small gates are only placed in air, do not overwrite machines or valuable blocks, expire after five minutes, and do not force-load distant chunks for cleanup.
+* TimeFractureFX detects nearby gate blocks every two seconds (bounded client-side scan of loaded chunks) and displays a small world-space rift. The huge sky preview remains a separate original volumetric GLSL effect.
+* Gate entry uses the existing LayerWorlds system for separate server dimensions; copying a missing initial chunk is queued in server-tick batches. Returns via `/timefracture return`.
+* Opt-in random anomalies now use the REAL playable layer dimensions, not the removed displaced pocket-world API. `/timefracture anomaly on|off|test`.
+* A crafting recipe for the time artifact is included.
+* FPS guard and adaptive GLSL quality retained from 0.10.
+* New developer command `/timefracture gate status`.
 
-## Important limitations (NOT DONE)
-- Full infinite-chunk copy-on-write worlds for all dimensions: NOT implemented. Eight existing slots with one chunk initial inheritance.
-- True AI players with frozen skin, autonomous development, complex Create factories and flying airships: NOT implemented.
-- Bi-directional physically traversable portals, remote timeline live-world rendering: NOT implemented.
-- Robust full-world rewind and merge of all new time dimensions: NOT implemented. Old Create condenser merges LEGACY pocket samples only.
-- Exact pixel reproduction of supplied cosmic screenshot: cannot guarantee without the original 3D scene/shader sources. The current GLSL is original volumetric synthesis.
-- No possible implementation can *guarantee* zero FPS stalls in all hardware / mod combinations. This patch puts hard limits on work triggered by TimeFracture and adaptive shader protection, but other Minecraft activity and chunk generation can still stall. Test with spark profiler and F3 FPS.
+## Status — significant remaining work
+This is NOT a complete multiverse. The engine still inherits one initial chunk per fork, not the whole generated world. There is no genuine autonomous AI player with a frozen skin, no live alternate-world image through the aperture, no airships transported across layers, no complete new-layer merge through the Create condenser, and no safe full-world DEV history rollback from within a running server. These cannot be replaced by villagers or illustrative particles.
 
 ## Test
-1. Make an entire WORLD backup; remove all previous TimeFracture and TimeFractureFX .jars.
-2. Install Create for NeoForge 1.21.1 and optionally JEI.
-3. /timefracture focus <onlinePlayer>; /timefracture branch -; /timefracture layers
-4. /timefracture enter T-1 then /timefracture return
-5. /tfx preview portal; /tfx preview where; move 50 blocks and /tfx preview where again. Anchor XYZ must remain identical while distance changes.
-6. /tfx preview perf (check FPS≈ and sample quality). /tfx preview low and /tfx preview off are immediate fallback.
-7. /tfx preview stop
+1. Back up the world and install both new jars (NeoForge 1.21.1, Create 6.0.10).
+2. `/give @p timefracture:time_artifact`
+3. `/timefracture focus <online-player>`
+4. `/timefracture branch -` (use the actual ID returned)
+5. `/timefracture gate open T-1`; walk into the new glowing gate.
+6. `/timefracture return`; ensure original XYZ and world were restored.
+7. `/timefracture anomaly on`; `/timefracture anomaly test`; then `/timefracture anomaly off`.
+8. `/tfx preview portal`; `/tfx preview where`; walk away and verify anchor XYZ unchanged.
+9. `/tfx preview perf`; adjust `low` or `off` if graphics are too slow.
 
-## Validated scope
-GitHub Actions build and dedicated server boot tests can confirm compilation, resources and command registration only. They cannot certify client FPS, GPU driver behavior or in-game correct display of the portal.
+## World safety
+Never test on the only copy of a world. The mod preserves old save regions but it has NOT been tested in an actual interactive client by this build system. GitHub Actions compile and server smoke prove less than real-world multiplayer and GPU integration testing.

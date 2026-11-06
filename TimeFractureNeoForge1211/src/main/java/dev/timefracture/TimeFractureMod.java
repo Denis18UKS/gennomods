@@ -36,6 +36,7 @@ public class TimeFractureMod {
   static PocketWorld P; // LEGACY: read-only recovery for previously generated pocket areas
   static LayerCatalog LAYERS;
   static LayerWorlds TRAVEL;
+  static RiftGates GATES;
   static AnomalyManager A;
   public static final DeferredRegister.Blocks BLOCKS=DeferredRegister.createBlocks("timefracture");
   public static final DeferredBlock<ChronalCoreBlock> CHRONAL_CORE =
@@ -47,9 +48,14 @@ public class TimeFractureMod {
   public static final DeferredHolder<BlockEntityType<?>,BlockEntityType<ChronalCoreBlockEntity>> CHRONAL_CORE_BE =
       BLOCK_ENTITIES.register("chronal_core",()->
           BlockEntityType.Builder.of(ChronalCoreBlockEntity::new,CHRONAL_CORE.get()).build(null));
+  public static final DeferredBlock<RiftGateBlock> RIFT_GATE =
+      BLOCKS.register("rift_gate",()->new RiftGateBlock(
+          BlockBehaviour.Properties.of().strength(2f).noCollission()
+              .lightLevel(state->14).sound(SoundType.AMETHYST)));
   static final DeferredRegister.Items ITEMS=DeferredRegister.createItems("timefracture");
   static {
     ITEMS.registerSimpleBlockItem(CHRONAL_CORE);
+    ITEMS.registerSimpleBlockItem(RIFT_GATE);
     ITEMS.register("time_artifact",()->new Item(new Item.Properties().stacksTo(1)){
       @Override public InteractionResultHolder<ItemStack> use(Level world,Player user,InteractionHand hand){
         if(world.isClientSide) TimeArtifactClient.open();
@@ -70,6 +76,7 @@ public class TimeFractureMod {
     // NEVER auto-teleport players into displaced legacy pocket islands.
     NeoForge.EVENT_BUS.addListener(ConvergenceService::tick);
     NeoForge.EVENT_BUS.addListener(TimeFractureMod::layerTicks);
+    NeoForge.EVENT_BUS.addListener(TimeFractureMod::gateTicks);
   }
   public static boolean canConverge() { return P!=null && P.count()>=2 && !L.frozen; }
   public static int activePocketCount() { return P==null?0:P.count(); }
@@ -121,12 +128,22 @@ public class TimeFractureMod {
       if(TRAVEL==null)return msg(c.getSource(),"§cМодуль переходов ещё не загрузился.");
       return msg(c.getSource(),TRAVEL.leave(p));
     }));
+    var gates=Commands.literal("gate");
+    gates.then(Commands.literal("open").then(Commands.argument("line",StringArgumentType.word()).executes(c->{
+      if(!(c.getSource().getEntity() instanceof ServerPlayer player))
+        return msg(c.getSource(),"§cКоманда требует присутствия игрока");
+      if(GATES==null)return msg(c.getSource(),"§cРеестр разломов ещё не загружен");
+      return msg(c.getSource(),GATES.open(player,StringArgumentType.getString(c,"line")));
+    })));
+    gates.then(Commands.literal("status").executes(c->
+        msg(c.getSource(),GATES==null?"§cРеестр разломов не загружен":GATES.status())));
+    root.then(gates);
     var anomalies=Commands.literal("anomaly");
     anomalies.then(Commands.literal("on").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
         return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
-      return msg(c.getSource(),"§eСлучайные переходы временно выключены: нет изолированных мировых слоёв. "+
-          "Не телепортируем игрока в карманные копии.");
+      A.set(p.getUUID(),true);
+      return msg(c.getSource(),"§dСлучайные временные аномалии включены для тебя (можно выключить /timefracture anomaly off)");
     }));
     anomalies.then(Commands.literal("off").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
@@ -137,8 +154,7 @@ public class TimeFractureMod {
     anomalies.then(Commands.literal("test").executes(c->{
       if(!(c.getSource().getEntity() instanceof ServerPlayer p)||A==null)
         return msg(c.getSource(),"§cТолько игрок после загрузки сервера");
-      return msg(c.getSource(),"§eАномалия недоступна до реализации настоящих временных слоёв; "+
-          "прежний перенос на острова отключён.");
+      return msg(c.getSource(),A.travel(p,true)?"§dАномалия запущена":"§eПока нет доступных альтернативных слоёв");
     }));
     root.then(anomalies);
     root.then(Commands.literal("converge")
@@ -248,6 +264,10 @@ public class TimeFractureMod {
     LAYERS=new LayerCatalog(dir.resolve("layers.tsv"));
     A=new AnomalyManager(dir.resolve("anomalies.txt"));
     TRAVEL=new LayerWorlds(dir.resolve("copied_chunks.txt"));
+    GATES=new RiftGates(dir.resolve("gates.tsv"));
+  }
+  static void gateTicks(net.neoforged.neoforge.event.tick.ServerTickEvent.Post e){
+    if(GATES!=null)GATES.tick(e);
   }
   static void layerTicks(net.neoforged.neoforge.event.tick.ServerTickEvent.Post e){
     if(TRAVEL!=null)TRAVEL.tick(e);

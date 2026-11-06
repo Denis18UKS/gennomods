@@ -131,7 +131,9 @@ public final class FxMeshRenderer {
                     if(samplesUniform!=null)samplesUniform.set((float)currentSamples());
                     portal(matrix,fx.center(),amount,seconds);
                 }
-                else rift(matrix,fx.center(),amount,fx.type().equals("window"),seconds);
+                else rift(matrix,fx.center(),
+                   amount*(fx.type().equals("gate-window")?.28f:1f),
+                   fx.type().equals("window")||fx.type().equals("gate-window"),seconds);
             }
         } finally {
             RenderSystem.depthMask(true);

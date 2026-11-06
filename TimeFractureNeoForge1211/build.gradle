@@ -3,7 +3,7 @@ plugins {
     id 'net.neoforged.moddev' version '2.0.147'
 }
 group = 'dev.timefracture'
-version = '0.10.0-performance'
+version = '0.11.0-gates'
 base { archivesName = 'timefracture-NeoForge-1.21.1' }
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 neoForge {
