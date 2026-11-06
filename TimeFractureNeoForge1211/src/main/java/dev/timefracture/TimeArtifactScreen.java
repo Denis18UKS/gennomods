@@ -73,12 +73,18 @@ public final class TimeArtifactScreen extends Screen {
             if(!validId().equals("-"))command("timefracture enter "+validId());
         }).bounds(left+318,top+255,60,20).build());
         addRenderableWidget(Button.builder(Component.literal("Древо"),b->command("timefracture tree")
-        ).bounds(left+55,top+229,82,20).build());
-        addRenderableWidget(Button.builder(Component.literal("Вернуться"),b->command("timefracture return")
-        ).bounds(left+143,top+229,105,20).build());
+        ).bounds(left+53,top+229,64,20).build());
+        addRenderableWidget(Button.builder(Component.literal("Назад"),b->command("timefracture return")
+        ).bounds(left+122,top+229,79,20).build());
+        addRenderableWidget(Button.builder(Component.literal("Разлом"),b->{
+            if(!validId().equals("-")){
+                command("timefracture gate open "+validId());
+                Minecraft.getInstance().setScreen(null);
+            }
+        }).bounds(left+206,top+229,70,20).build());
         addRenderableWidget(Button.builder(Component.literal("Обновить"),b->{
             page=0;rebuildWidgets();
-        }).bounds(left+254,top+229,87,20).build());
+        }).bounds(left+281,top+229,60,20).build());
     }
 
     private String validId(){
