@@ -16,7 +16,20 @@ jobs:
         run: |
           mkdir -p ungluer
           tar -xJf ungluer-src.tar.xz -C ungluer
-          find ungluer -maxdepth 2 -type f
+      - name: Add Aeronautics build-time API dependencies
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ungluer/build.gradle')
+          s = p.read_text()
+          anchor = '    // The Aeronautics bundle holds Simulated/Aeronautics/Offroad as NESTED jarJar files.'
+          assert anchor in s
+          additions = """    compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+              compileOnly 'net.createmod.ponder:ponder-neoforge:1.0.81+mc1.21.1'
+          """
+          s = s.replace(anchor, additions + anchor)
+          p.write_text(s)
+          PY
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
