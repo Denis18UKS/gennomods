@@ -1,0 +1,31 @@
+name: Build ChromaMix RGB extras 2.2.13
+on:
+  push:
+    branches:
+      - build/chromamix-rgb-2213
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Extract ChromaMix source
+        run: mkdir -p modsrc && tar -xJf chromamix-2213-src.tar.xz -C modsrc
+      - name: Compile ChromaMix extras
+        working-directory: modsrc
+        run: gradle clean build --no-daemon --stacktrace
+      - name: Upload compiled classes
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromamix-extras-classes
+          path: modsrc/build/libs/*.jar
