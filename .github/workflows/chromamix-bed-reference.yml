@@ -1,0 +1,21 @@
+name: Inspect Bed Texture for RGB Pillow Mask
+on:
+  push:
+    branches: [build/chromamix-rgb-2213]
+    paths: ['.github/workflows/chromamix-bed-reference.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Minecraft 1.21.1 bed texture reference
+        run: |
+          python3 - <<'PY'
+          from urllib.request import urlretrieve
+          url="https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/1.21.1/entity/bed/white.png"
+          urlretrieve(url, "/tmp/chromamix_bed_white_reference.png")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chromamix-bed-white-reference
+          path: /tmp/chromamix_bed_white_reference.png
