@@ -108,7 +108,7 @@ public final class ChromaJadePlugin implements IWailaPlugin {
         private static String adjustForType(String shade, String registryPath, String type) {
             String simple = type.toLowerCase(Locale.ROOT);
             boolean feminine = registryPath.contains("bed") ||
-                    registryPath.contains("carpet") ||
+                    
                     registryPath.contains("candle") ||
                     registryPath.contains("terracotta") ||
                     registryPath.contains("wool") ||
