@@ -3,4 +3,5 @@ package dev.chromamix.world;
 public final class ColorNames {
  private ColorNames(){}
  public static String colorDescription(int rgb){return "";}
+ public static String blockName(int rgb, net.minecraft.world.level.block.Block b){return "";}
 }
