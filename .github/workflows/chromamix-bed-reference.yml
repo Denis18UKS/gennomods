@@ -12,10 +12,11 @@ jobs:
         run: |
           python3 - <<'PY'
           from urllib.request import urlretrieve
-          url="https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/1.21.1/entity/bed/white.png"
-          urlretrieve(url, "/tmp/chromamix_bed_white_reference.png")
+          for color in ("white", "red", "blue"):
+              url=f"https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/data/1.21.1/entity/bed/{color}.png"
+              urlretrieve(url, f"/tmp/chromamix_bed_{color}_reference.png")
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: chromamix-bed-white-reference
-          path: /tmp/chromamix_bed_white_reference.png
+          name: chromamix-bed-color-reference
+          path: /tmp/chromamix_bed_*_reference.png
