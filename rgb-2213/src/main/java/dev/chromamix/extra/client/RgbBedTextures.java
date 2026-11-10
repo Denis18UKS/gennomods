@@ -42,12 +42,22 @@ public final class RgbBedTextures {
    int tr=color>>>16&255,tg=color>>>8&255,tb=color&255;
    for(int y=0;y<image.getHeight();y++) for(int x=0;x<image.getWidth();x++){
       int atlasX=x*64/image.getWidth(),atlasY=y*64/image.getHeight();
-      if(atlasX>=29 || atlasY<15 || atlasY>=44)continue;
+      if(!blanketFabricUV(atlasX,atlasY))continue;
       int abgr=image.getPixelRGBA(x,y),a=abgr>>>24;
       int r=abgr&255,g=abgr>>>8&255,b=abgr>>>16&255;
-      if(a==0 || Math.max(r,Math.max(g,b))-Math.min(r,Math.min(g,b))>18)continue;
+      if(a==0)continue;
       image.setPixelRGBA(x,y,(a<<24)|((b*tb/255)<<16)|((g*tg/255)<<8)|(r*tr/255));
    }
+ }
+ /**
+  * Exact 1.21.1 UV zones, derived by comparing white/red/blue bed textures.
+  * The previous <29 guard omitted the foot-end blanket, creating a white patch.
+  * This matches all 640 dyed fabric pixels and excludes pillow/wood pixels.
+  */
+ static boolean blanketFabricUV(int x, int y) {
+   return (x>=2 && x<26 && y>=14 && y<22)
+       || (x>=22 && x<38 && y>=24 && y<28)
+       || (x>=2 && x<26 && y>=28 && y<44);
  }
  public static synchronized void clear(){
    Minecraft mc=Minecraft.getInstance();
