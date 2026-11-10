@@ -20,6 +20,8 @@ jobs:
           gradle-version: '8.10.2'
       - name: Extract ChromaMix source
         run: cat chromamix-rgb-src-part{1..5}.b64 | base64 --decode > chromamix-2213-src.tar.xz && mkdir -p modsrc && tar -xJf chromamix-2213-src.tar.xz -C modsrc
+      - name: Apply expanded white-block compatibility
+        run: python chromamix-2213-fixes.py
       - name: Compile ChromaMix extras
         working-directory: modsrc
         run: gradle clean build --no-daemon --stacktrace
