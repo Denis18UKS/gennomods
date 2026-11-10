@@ -3,7 +3,7 @@ import net.minecraft.world.item.ItemStack;
 /** Compile-only stub. Final ChromaMix JAR uses its own complete RgbRules.class. */
 public final class RgbRules {
  private RgbRules(){}
- public static boolean accepts(ItemStack s){return false;}
+ public static boolean accepts(ItemStack s){return false;} public static boolean accepts(String s){return false;}
  public static String id(ItemStack s){return ""; }
  public static boolean pigment(ItemStack s){return false;}
  public static Integer rgb(ItemStack s){return null;}
