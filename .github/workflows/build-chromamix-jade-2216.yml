@@ -24,7 +24,7 @@ jobs:
       - name: Verify Jade plugin is in output
         run: |
           jar tf rgb-2213/build/libs/chromamix-rgb-mixer-2.2.13.jar | grep 'dev/chromamix/compat/ChromaJadePlugin.class'
-          jar tf rgb-2213/build/libs/chromamix-rgb-mixer-2.2.13.jar | grep 'ChromaJadePlugin\\$ColorProvider.class'
+          jar tf rgb-2213/build/libs/chromamix-rgb-mixer-2.2.13.jar | grep -F 'ChromaJadePlugin$ColorProvider.class'
       - uses: actions/upload-artifact@v4
         with:
           name: ChromaMix-2.2.16-Jade-Compiled
