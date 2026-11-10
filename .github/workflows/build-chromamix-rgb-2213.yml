@@ -22,6 +22,10 @@ jobs:
         run: cat chromamix-rgb-src-part{1..5}.b64 | base64 --decode > chromamix-2213-src.tar.xz && mkdir -p modsrc && tar -xJf chromamix-2213-src.tar.xz -C modsrc
       - name: Apply expanded white-block compatibility
         run: python chromamix-2213-fixes.py
+      - name: Add RGB banner renderer integration
+        run: |
+          cp chromamix-2213-additions/RgbBannerMixin.java modsrc/src/main/java/dev/chromamix/extra/mixin/
+          python -c "import json,pathlib;p=pathlib.Path('modsrc/src/main/resources/chromamix.extras.mixins.json');x=json.loads(p.read_text());x['client'].append('RgbBannerMixin');p.write_text(json.dumps(x,indent=2))"
       - name: Compile ChromaMix extras
         working-directory: modsrc
         run: gradle clean build --no-daemon --stacktrace
