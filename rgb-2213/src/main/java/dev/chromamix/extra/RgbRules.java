@@ -4,6 +4,7 @@ import net.minecraft.world.item.ItemStack;
 public final class RgbRules {
  private RgbRules(){}
  public static boolean accepts(ItemStack s){return false;}
+ public static String id(ItemStack s){return ""; }
  public static boolean pigment(ItemStack s){return false;}
  public static Integer rgb(ItemStack s){return null;}
  public static ItemStack withRgb(ItemStack s,int rgb){return s;}
