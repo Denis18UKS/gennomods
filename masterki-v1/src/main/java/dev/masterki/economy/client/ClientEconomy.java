@@ -32,8 +32,8 @@ public final class ClientEconomy {
     public static void inventory(ScreenEvent.Render.Post event){
         if(!(event.getScreen() instanceof InventoryScreen)||!received)return;
         GuiGraphics g=event.getGuiGraphics();
-        int x=Math.min(event.getScreen().width-117,event.getScreen().width/2+93);
-        int y=Math.max(8,event.getScreen().height/2-82);
+        int x=Math.max(0,(event.getScreen().width-117)/2);
+        int y=Math.max(8,Math.min(event.getScreen().height/2+86,event.getScreen().height-32));
         if(x<0)return;
         g.fill(x,y,x+117,y+31,0xE52A1A13);
         g.fill(x,y,x+117,y+2,0xFFD7A04B);

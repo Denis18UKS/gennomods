@@ -16,6 +16,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -67,6 +70,9 @@ public final class PlayerUtilities {
                 .then(Commands.argument("page", IntegerArgumentType.integer(1))
                     .executes(c -> list(c.getSource().getPlayerOrException(), IntegerArgumentType.getInteger(c, "page")))))
             .then(Commands.literal("last").executes(c -> last(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("tp")
+                .then(Commands.argument("number", IntegerArgumentType.integer(1))
+                    .executes(c -> teleportToDeath(c.getSource().getPlayerOrException(), IntegerArgumentType.getInteger(c, "number")))))
             .then(Commands.literal("remove")
                 .then(Commands.argument("number", IntegerArgumentType.integer(1))
                     .executes(c -> remove(c.getSource().getPlayerOrException(), IntegerArgumentType.getInteger(c,"number")))))
@@ -145,8 +151,36 @@ public final class PlayerUtilities {
             .append(Component.literal("["+loc+"]").withStyle(style -> style.withColor(ChatFormatting.AQUA)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,loc))
                 .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,Component.literal("Скопировать координаты")))))
-            .append(Component.literal(" | "+death.reason).withStyle(ChatFormatting.GRAY)));
+            .append(Component.literal(" | "+death.reason).withStyle(ChatFormatting.GRAY))
+            .append(Component.literal("  "))
+            .append(button("[Телепорт]", "/death tp "+number, ChatFormatting.GREEN)));
     }
+    private static int teleportToDeath(ServerPlayer player, int number) {
+        // The marker is resolved on the server against the caller's own history.
+        List<Death> deaths = Saved.of(player.serverLevel()).get(player.getUUID());
+        if (number < 1 || number > deaths.size()) {
+            send(player, "Нет метки смерти с таким номером.", ChatFormatting.RED);
+            return 0;
+        }
+        Death death = deaths.get(number - 1);
+        ResourceKey<net.minecraft.world.level.Level> key =
+            ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(death.dimension));
+        ServerLevel target = player.server.getLevel(key);
+        if (target == null) {
+            send(player, "Измерение метки смерти недоступно.", ChatFormatting.RED);
+            return 0;
+        }
+        BlockPos pos = death.pos;
+        boolean teleported = player.teleportTo(target, pos.getX() + 0.5D, pos.getY(),
+            pos.getZ() + 0.5D, Set.of(), player.getYRot(), player.getXRot());
+        if (!teleported) {
+            send(player, "Телепортация не удалась.", ChatFormatting.RED);
+            return 0;
+        }
+        send(player, "Телепортация к метке смерти выполнена.", ChatFormatting.GREEN);
+        return 1;
+    }
+
     private static int remove(ServerPlayer p,int n) {
         if(Saved.of(p.serverLevel()).remove(p.getUUID(),n-1)){send(p,"Метка #"+n+" удалена.",ChatFormatting.GREEN);return 1;}
         send(p,"Нет метки с таким номером.",ChatFormatting.RED);return 0;

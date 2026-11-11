@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.0 — TEST BUILD
+# Masterki Economy 1.0.1 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -6,7 +6,7 @@ NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client 
 
 - Full custom `ShopScreen` (not a chest or chat UI), brass/copper Create-inspired layout based on the user-supplied screenshot; M coin PNG from the approved GUI reference
 - Currency **мастерки (М)**, initial 300 М account; UUID-based persistent balances
-- Balance widget by the vanilla inventory, optional temporary main-HUD indicator
+- Balance widget centered beneath the vanilla inventory, away from JEI, optional temporary main-HUD indicator
 - Separate shop/sell/categories, search, filters, price sorting, favorites, item details, quantity choices and confirmation via server-side transaction
 - Items from vanilla, optional Create, other loaded mods, editable `config/masterki/products.json`
 - Server-validated purchases, sales, bulk discounts, bounded stock, per-day buyback caps, payment history
