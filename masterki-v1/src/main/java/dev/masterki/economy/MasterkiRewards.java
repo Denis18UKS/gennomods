@@ -23,7 +23,7 @@ public final class MasterkiRewards {
 
     @SubscribeEvent
     public static void onAdvancement(AdvancementEvent.AdvancementEarnEvent event) {
-        if(!(event.getEntity() instanceof ServerPlayer player))return;
+        if(!(event.getEntity() instanceof ServerPlayer player)||player.getAbilities().instabuild)return;
         ResourceLocation advancement=event.getAdvancement().id();
         String path=advancement.getPath();
         if(path.contains("recipes/")||path.endsWith("/root")||path.startsWith("root")||
@@ -37,7 +37,7 @@ public final class MasterkiRewards {
 
     @SubscribeEvent
     public static void onHostileDeath(LivingDeathEvent event) {
-        if(!(event.getSource().getEntity() instanceof ServerPlayer player))return;
+        if(!(event.getSource().getEntity() instanceof ServerPlayer player)||player.getAbilities().instabuild)return;
         if(!(event.getEntity() instanceof Enemy))return;
         if(event.getEntity()==player)return;
         var data=Masterki.Saved.of(player.serverLevel());
@@ -51,7 +51,7 @@ public final class MasterkiRewards {
 
     @SubscribeEvent
     public static void onExplore(PlayerTickEvent.Post event) {
-        if(!(event.getEntity() instanceof ServerPlayer player))return;
+        if(!(event.getEntity() instanceof ServerPlayer player)||player.getAbilities().instabuild)return;
         if(player.tickCount%1200!=0)return; // Once every 60 seconds, never every game tick.
         String dimension="dimension:"+player.serverLevel().dimension().location();
         var data=Masterki.Saved.of(player.serverLevel());
