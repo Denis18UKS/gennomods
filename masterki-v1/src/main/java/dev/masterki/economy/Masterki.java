@@ -207,6 +207,20 @@ public final class Masterki {
         return result;
     }
 
+    /** Three small daily tasks, rotated against the actual date rather than Minecraft ticks. */
+    public static List<Contract> dailyTasks() {
+        List<Contract> available=contracts();
+        if(available.isEmpty())return List.of();
+        int offset=(int)Math.floorMod(System.currentTimeMillis()/DAY_MS,available.size());
+        List<Contract> daily=new ArrayList<>();
+        for(int i=0;i<Math.min(3,available.size());i++){
+            Contract contract=available.get((offset+i*7)%available.size());
+            daily.add(new Contract("daily:"+contract.id(),contract.item(),
+                Math.max(4,contract.amount()/4),Math.max(30,contract.reward()/4)));
+        }
+        return daily;
+    }
+
     private void tick(ServerTickEvent.Post e){
         if(++tickCounter%1200!=0)return;
         Saved s=Saved.of(e.getServer().overworld());
@@ -282,6 +296,7 @@ public final class Masterki {
         for(Offer offer:offers())products.add(new MasterkiNetwork.Product(offer.id,offer.category,offer.buy,offer.sell,data.stock(offer),offer.daily,offer.cap));
         List<MasterkiNetwork.Task> tasks=new ArrayList<>();
         for(Contract c:contracts())tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
+        for(Contract c:dailyTasks())tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
             products,tasks,List.copyOf(data.logs(p.getUUID()))));
     }
@@ -295,6 +310,27 @@ public final class Masterki {
         }
         if(qty<=0||qty>4096){tell(player,"Недопустимое количество.",ChatFormatting.RED);return;}
         Offer offer=offers().stream().filter(o->o.id.equals(req.id())).findFirst().orElse(null);
+        if("daily".equals(req.kind())){
+            Contract task=dailyTasks().stream().filter(c->c.id().equals(req.id())).findFirst().orElse(null);
+            if(task==null){tell(player,"Это задание уже недоступно.",ChatFormatting.RED);sync(player,true,"daily");return;}
+            long day=System.currentTimeMillis()/DAY_MS;
+            if(!data.canCompleteDaily(player.getUUID(),day,task.id())){
+                tell(player,"Сегодня это задание уже выполнено.",ChatFormatting.YELLOW);
+                sync(player,true,"daily");return;
+            }
+            Item item=BuiltInRegistries.ITEM.get(ResourceLocation.parse(task.item()));
+            if(item==Items.AIR||itemCount(player,new ItemStack(item))<task.amount()){
+                tell(player,"Недостаточно предметов для задания.",ChatFormatting.RED);
+                sync(player,true,"daily");return;
+            }
+            if(data.balance(player.getUUID())>Long.MAX_VALUE-task.reward()){sync(player,true,"daily");return;}
+            take(player,new ItemStack(item),task.amount());
+            data.completeDaily(player.getUUID(),day,task.id());
+            data.setBalance(player.getUUID(),data.balance(player.getUUID())+task.reward());
+            data.log(player.getUUID(),"Ежедневное задание: +"+task.reward()+" М");
+            tell(player,"Задание выполнено: +"+task.reward()+" М",ChatFormatting.GREEN);
+            sync(player,true,"daily");return;
+        }
         if("contract".equals(req.kind())){
             Contract contract=contracts().stream().filter(c->c.id.equals(req.id())).findFirst().orElse(null);
             if(contract==null){sync(player,true,"contracts");return;}
@@ -393,6 +429,8 @@ public final class Masterki {
         final Map<UUID,java.util.Set<String>> discoveries=new HashMap<>();
         final Map<UUID,Integer> huntedToday=new HashMap<>();
         final Map<UUID,Long> huntDay=new HashMap<>();
+        final Map<UUID,Long> dailyDay=new HashMap<>();
+        final Map<UUID,java.util.Set<String>> dailyCompleted=new HashMap<>();
         final Map<String,Integer> soldToday=new HashMap<>();
         long buybackDay=System.currentTimeMillis()/DAY_MS;
         long nextRestock=System.currentTimeMillis()+DAY_MS;
@@ -457,6 +495,18 @@ public final class Masterki {
             updateBuybackDay();
             soldToday.merge(offer.id(),qty,Integer::sum);setDirty();
         }
+        boolean canCompleteDaily(UUID id,long day,String task){
+            return dailyDay.getOrDefault(id,-1L)!=day ||
+                !dailyCompleted.getOrDefault(id,java.util.Set.of()).contains(task);
+        }
+        void completeDaily(UUID id,long day,String task){
+            if(dailyDay.getOrDefault(id,-1L)!=day){
+                dailyDay.put(id,day);
+                dailyCompleted.put(id,new java.util.HashSet<>());
+            }
+            dailyCompleted.computeIfAbsent(id,k->new java.util.HashSet<>()).add(task);
+            setDirty();
+        }
         int contractsCompleted(UUID id,long today){
             return taskDay.getOrDefault(id,-1L)==today?tasksCount.getOrDefault(id,0):0;
         }
@@ -477,6 +527,12 @@ public final class Masterki {
                 u.putLong("TaskDay",taskDay.getOrDefault(e.getKey(),-1L));
                 u.putInt("Hunts",huntedToday.getOrDefault(e.getKey(),0));
                 u.putLong("HuntDay",huntDay.getOrDefault(e.getKey(),-1L));
+                u.putLong("DailyDay",dailyDay.getOrDefault(e.getKey(),-1L));
+                ListTag finished=new ListTag();
+                for(String task:dailyCompleted.getOrDefault(e.getKey(),java.util.Set.of())){
+                    CompoundTag mark=new CompoundTag();mark.putString("ID",task);finished.add(mark);
+                }
+                u.put("DailyDone",finished);
                 ListTag found=new ListTag();
                 for(String entry:discoveries.getOrDefault(e.getKey(),java.util.Set.of())){
                     CompoundTag item=new CompoundTag();item.putString("ID",entry);found.add(item);
@@ -507,6 +563,11 @@ public final class Masterki {
                 saved.taskDay.put(uuid,u.getLong("TaskDay"));
                 saved.huntedToday.put(uuid,u.getInt("Hunts"));
                 saved.huntDay.put(uuid,u.getLong("HuntDay"));
+                saved.dailyDay.put(uuid,u.getLong("DailyDay"));
+                ListTag dailyDone=u.getList("DailyDone",Tag.TAG_COMPOUND);
+                java.util.Set<String> done=new java.util.HashSet<>();
+                for(int k=0;k<dailyDone.size();k++)done.add(dailyDone.getCompound(k).getString("ID"));
+                saved.dailyCompleted.put(uuid,done);
                 ListTag found=u.getList("Discoveries",Tag.TAG_COMPOUND);
                 java.util.Set<String> discovered=new java.util.HashSet<>();
                 for(int k=0;k<found.size();k++)discovered.add(found.getCompound(k).getString("ID"));
