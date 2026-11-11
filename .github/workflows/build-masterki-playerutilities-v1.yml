@@ -24,6 +24,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
+      - name: Include the approved Masterki currency icon
+        if: matrix.project == 'masterki-v1'
+        run: |
+          mkdir -p masterki-v1/src/main/resources/assets/masterki/textures/gui
+          base64 -d masterki-v1/coin.png.base64 > masterki-v1/src/main/resources/assets/masterki/textures/gui/coin.png
       - name: Compile mod with actual NeoForge
         run: gradle -p ${{ matrix.project }} clean build --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
