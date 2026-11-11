@@ -27,7 +27,8 @@ public final class ShopScreen extends Screen {
     private static final String[] CATEGORIES={"Ресурсы","Create","Инструменты","Строительство","Еда и фермы","Редкости","Другие моды","Избранное"};
     private MasterkiNetwork.Snapshot data;
     private String tab="Магазин",category="Ресурсы",search="";
-    private int page=0,qty=64,chosen=0,focus=0;
+    private int page=0,qty=64,chosen=0,focus=0,sortMode=0;
+    private boolean onlyStock=false;
     private boolean searching=false;
     private float uiScale;private int px,py;
     private final List<MasterkiNetwork.Product> visible=new ArrayList<>();
@@ -55,8 +56,11 @@ public final class ShopScreen extends Screen {
             ItemStack item=stack(product.id());
             String name=item.isEmpty()?product.id():item.getHoverName().getString();
             if(!query.isBlank()&&!name.toLowerCase(Locale.ROOT).contains(query)&&!product.id().toLowerCase(Locale.ROOT).contains(query))continue;
+            if(onlyStock&&product.stock()==0)continue;
             visible.add(product);
         }
+        if(sortMode==1)visible.sort(java.util.Comparator.comparingLong(MasterkiNetwork.Product::buy));
+        else if(sortMode==2)visible.sort(java.util.Comparator.comparingLong(MasterkiNetwork.Product::buy).reversed());
         int maxPage=Math.max(0,(visible.size()-1)/15);
         page=Math.max(0,Math.min(page,maxPage));
         if(selected==null&&!visible.isEmpty())selected=visible.get(0);
@@ -138,8 +142,8 @@ public final class ShopScreen extends Screen {
         if(tab.equals("Магазин")||tab.equals("Продажа")){
             g.fill(196,132,422,160,0xFF211611);frame(g,196,132,226,28,0xFF7A4C25);
             text(g,"⌕ "+search+(searching&&System.currentTimeMillis()%900<450?"_":""),204,141,search.isBlank()?0xFFB5A08B:LIGHT);
-            button(g,429,132,94,28,"Фильтры",false,LIGHT);
-            button(g,530,132,100,28,"По цене ↕",false,LIGHT);
+            button(g,429,132,94,28,onlyStock?"В наличии":"Фильтры",onlyStock,LIGHT);
+            button(g,530,132,100,28,sortMode==0?"По цене ↕":sortMode==1?"Цена ↑":"Цена ↓",sortMode!=0,LIGHT);
             int offset=page*15;
             for(int i=0;i<15;i++){
                 int index=offset+i;
@@ -194,6 +198,7 @@ public final class ShopScreen extends Screen {
             if(!item.isEmpty())g.renderItem(item,667,147);
             text(g,shorten(item.getHoverName().getString(),24),691,147,GOLD);
             text(g,shorten(selected.id(),29),661,167,0xFFBEA990);
+            button(g,853,138,28,28,ClientEconomy.favorites.contains(selected.id())?"★":"☆",false,GOLD);
             g.fill(662,188,878,189,0xFF86572A);
             labelRow(g,"Купить:",selected.buy()+" М / шт.",198);
             labelRow(g,"Продать:",selected.sell()+" М / шт.",220);
@@ -264,6 +269,8 @@ public final class ShopScreen extends Screen {
         }
         if(tab.equals("Магазин")||tab.equals("Продажа")){
             if(x>=196&&x<422&&y>=132&&y<160){searching=true;return true;}
+            if(x>=429&&x<523&&y>=132&&y<160){onlyStock=!onlyStock;page=0;filter();return true;}
+            if(x>=530&&x<630&&y>=132&&y<160){sortMode=(sortMode+1)%3;page=0;filter();return true;}
             if(x>=197&&x<=634&&y>=168&&y<423){
                 int c=(int)((x-197)/88),r=(int)((y-168)/85);
                 if(c>=0&&c<5&&r>=0&&r<3){
@@ -273,10 +280,15 @@ public final class ShopScreen extends Screen {
                 }
             }
         }
+        if(selected!=null&&x>=853&&x<881&&y>=138&&y<167){
+            if(!ClientEconomy.favorites.add(selected.id()))ClientEconomy.favorites.remove(selected.id());
+            if("Избранное".equals(category))filter();
+            return true;
+        }
         if(x>=340&&x<505&&y>=427&&y<450){
             if(x<393)page=Math.max(0,page-1);else if(x>452)page++;
             int count=tab.equals("Контракты")||tab.equals("Задания")?data.tasks().size():visible.size();
-            page=Math.min(page,Math.max(0,(count-1)/(tab.equals("Контракты")?8:15)));
+            page=Math.min(page,Math.max(0,(count-1)/((tab.equals("Контракты")||tab.equals("Задания"))?8:15)));
             return true;
         }
         if(x>=659&&x<789&&y>=332&&y<361){
@@ -294,6 +306,12 @@ public final class ShopScreen extends Screen {
             return true;
         }
         if(x>=283&&x<610&&y>=462&&y<505){tab="Контракты";page=0;return true;}
+        if(x>=618&&x<745&&y>=462&&y<505){
+            PacketDistributor.sendToServer(new MasterkiNetwork.Action("top","",1));return true;
+        }
+        if(x>=753&&x<890&&y>=462&&y<505){
+            PacketDistributor.sendToServer(new MasterkiNetwork.Action("help","",1));return true;
+        }
         searching=false;
         return super.mouseClicked(mx,my,button);
     }
