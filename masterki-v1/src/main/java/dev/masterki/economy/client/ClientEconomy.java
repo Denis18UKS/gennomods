@@ -27,7 +27,7 @@ public final class ClientEconomy {
         return new MasterkiNetwork.Snapshot(snapshot.open(),snapshot.tab(),snapshot.balance(),
             snapshot.nextRestock(),java.util.List.copyOf(catalog),snapshot.tasks(),
             snapshot.history(),snapshot.layout(),snapshot.nextContracts(),snapshot.dailyReset(),
-            snapshot.contracts(),snapshot.dailyDone());
+            snapshot.contracts(),snapshot.dailyDone(),snapshot.scheduleZone());
     }
 
     public static void receive(MasterkiNetwork.Snapshot snapshot){

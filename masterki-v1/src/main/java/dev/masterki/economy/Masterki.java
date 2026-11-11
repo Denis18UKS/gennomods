@@ -198,7 +198,7 @@ public final class Masterki {
     public static List<Contract> dailyTasks() {
         List<Contract> available=contracts();
         if(available.isEmpty())return List.of();
-        int offset=(int)Math.floorMod(System.currentTimeMillis()/DAY_MS,available.size());
+        int offset=(int)Math.floorMod(MasterkiSchedule.cycleDay(System.currentTimeMillis()),available.size());
         List<Contract> daily=new ArrayList<>();
         for(int i=0;i<Math.min(3,available.size());i++){
             Contract contract=available.get((offset+i*7)%available.size());
@@ -228,8 +228,8 @@ public final class Masterki {
         d.register(Commands.literal("hunt").executes(c -> {
             ServerPlayer player=c.getSource().getPlayerOrException();
             Saved data=Saved.of(player.serverLevel());
-            long now=System.currentTimeMillis(),day=now/DAY_MS;
-            long seconds=((day+1)*DAY_MS-now)/1000;
+            long now=System.currentTimeMillis(),day=MasterkiSchedule.cycleDay(now);
+            long seconds=(MasterkiSchedule.nextCutoff(now)-now)/1000;
             tell(player,"Охота: обычные мобы "+data.huntCount(player.getUUID(),day)+"/12, "+
                 "боссы "+data.bossHuntCount(player.getUUID(),day)+"/2. "+
                 "Обновление через "+String.format(java.util.Locale.ROOT,"%02d:%02d:%02d",
@@ -251,6 +251,7 @@ public final class Masterki {
                 c.getSource().sendSuccess(()->Component.literal("Masterki: поставка выполнена"),false);return 1;
             }))
             .then(Commands.literal("reload").executes(c->{
+                MasterkiSchedule.reload();
                 offers=null;
                 int size=offers().size();
                 c.getSource().sendSuccess(()->Component.literal("Masterki: загружено "+size+" товаров"),false);
@@ -303,13 +304,13 @@ public final class Masterki {
         List<String> dailyDone=new ArrayList<>();
         for(Contract c:dailyTasks()){
             tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
-            if(!data.canCompleteDaily(p.getUUID(),now/DAY_MS,c.id()))dailyDone.add(c.id());
+            if(!data.canCompleteDaily(p.getUUID(),MasterkiSchedule.cycleDay(now),c.id()))dailyDone.add(c.id());
         }
         MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
             List.of(),tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
-            rotation.nextRotation(p.getUUID(),now),((now/DAY_MS)+1)*DAY_MS,
-            rotation.visible(p.getUUID(),now),dailyDone));
+            rotation.nextRotation(p.getUUID(),now),MasterkiSchedule.nextCutoff(now),
+            rotation.visible(p.getUUID(),now),dailyDone,MasterkiSchedule.zone().getId()));
         if(open)sendCatalog(p,data);
     }
 
@@ -356,7 +357,7 @@ public final class Masterki {
         if("daily".equals(req.kind())){
             Contract task=dailyTasks().stream().filter(c->c.id().equals(req.id())).findFirst().orElse(null);
             if(task==null){tell(player,"Это задание уже недоступно.",ChatFormatting.RED);sync(player,true,"daily");return;}
-            long day=System.currentTimeMillis()/DAY_MS;
+            long day=MasterkiSchedule.cycleDay(System.currentTimeMillis());
             if(!data.canCompleteDaily(player.getUUID(),day,task.id())){
                 tell(player,"Сегодня это задание уже выполнено.",ChatFormatting.YELLOW);
                 sync(player,true,"daily");return;

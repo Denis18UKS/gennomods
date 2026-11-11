@@ -33,6 +33,8 @@ public final class ShopScreen extends Screen {
     private int page=0,qty=64,chosen=0,focus=0,sortMode=0;
     private boolean onlyStock=false;
     private boolean searching=false;
+    private String pendingExpiringContract="";
+    private long pendingExpiringUntil=0L;
     private float uiScale;private int px,py;
     private final List<MasterkiNetwork.Product> visible=new ArrayList<>();
     private MasterkiNetwork.Product selected;
@@ -62,6 +64,11 @@ public final class ShopScreen extends Screen {
     private static String remaining(long deadline){
         long seconds=Math.max(0,(deadline-System.currentTimeMillis())/1000);
         return String.format(Locale.ROOT,"%02d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);
+    }
+    private String deadlineLabel(long date){
+        return java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm",Locale.ROOT)
+            .withZone(java.time.ZoneId.of(data.scheduleZone()))
+            .format(java.time.Instant.ofEpochMilli(date));
     }
     private static String statusLabel(String status){
         return switch(status){
@@ -238,8 +245,11 @@ public final class ShopScreen extends Screen {
         } else if(tab.equals("Контракты")||tab.equals("Задания")){
             boolean daily=tab.equals("Задания");
             text(g,daily?"ЕЖЕДНЕВНЫЕ ЗАДАНИЯ":"ЛИЧНЫЕ КОНТРАКТЫ",205,134,GOLD);
-            text(g,(daily?"До обновления заданий: ":"До обновления контрактов: ")+
-                remaining(daily?data.dailyReset():data.nextContracts()),205,151,0xFFD3BCA3);
+            long reset=daily?data.dailyReset():data.nextContracts();
+            text(g,"Обновление: "+deadlineLabel(reset)+" · "+remaining(reset),
+                205,151,0xFFD3BCA3);
+            if(!daily && pendingExpiringUntil>System.currentTimeMillis())
+                text(g,"До сдачи мало времени! Нажмите «Принять» ещё раз.",205,162,RED);
             List<MasterkiNetwork.Task> rows=tasksForTab();
             int perPage=daily?8:5;
             int start=page*perPage;
@@ -259,11 +269,20 @@ public final class ShopScreen extends Screen {
                     MasterkiNetwork.ContractStatus state=contractStatus(c.id());
                     String code=state==null?"expired":state.status();
                     text(g,"+"+format(c.reward())+" М",441,yy+6,GREEN);
-                    String stateText=statusLabel(code);
-                    if("accepted".equals(code)&&state!=null)stateText+=" · "+remaining(state.deadline());
-                    text(g,stateText,230,yy+26,"completed".equals(code)?GREEN:0xFFD7B990);
-                    if("available".equals(code))button(g,537,yy+21,79,24,"Принять",false,GOLD);
-                    else if("accepted".equals(code)){
+                    if(state!=null){
+                        String type=state.difficult()?"Сложный":"Обычный";
+                        String descriptor=type+" · "+statusLabel(code)+(state.carriedOver()?" (2-й день)":"");
+                        text(g,shorten(descriptor,32),230,yy+20,
+                            "completed".equals(code)?GREEN:0xFFD7B990);
+                        boolean nearDeadline=state.deadline()-System.currentTimeMillis()<2L*3600*1000
+                            && ("available".equals(code)||"accepted".equals(code));
+                        text(g,"До "+deadlineLabel(state.deadline())+" · "+remaining(state.deadline()),
+                            230,yy+34,nearDeadline?RED:0xFFC2A58C);
+                    }
+                    if("available".equals(code)){
+                        boolean pending=c.id().equals(pendingExpiringContract)&&pendingExpiringUntil>System.currentTimeMillis();
+                        button(g,537,yy+21,79,24,pending?"Точно?":"Принять",pending,GOLD);
+                    }else if("accepted".equals(code)){
                         button(g,456,yy+21,75,24,"Отмена",false,RED);
                         button(g,537,yy+21,79,24,"Сдать",false,GREEN);
                     }else button(g,537,yy+21,79,24,statusLabel(code),true,0xFF9AC58F);
@@ -384,6 +403,16 @@ public final class ShopScreen extends Screen {
                     String action="available".equals(contract.status())?"contract_accept":
                         "accepted".equals(contract.status())?(x<532?"contract_cancel":"contract_complete"):"";
                     if(!action.isEmpty()){
+                        if("contract_accept".equals(action)&&contract.deadline()-System.currentTimeMillis()<2L*3600*1000){
+                            if(!contract.id().equals(pendingExpiringContract) ||
+                                System.currentTimeMillis()>pendingExpiringUntil){
+                                pendingExpiringContract=contract.id();
+                                pendingExpiringUntil=System.currentTimeMillis()+6000L;
+                                return true;
+                            }
+                        }
+                        pendingExpiringContract="";
+                        pendingExpiringUntil=0;
                         PacketDistributor.sendToServer(new MasterkiNetwork.Action(action,contract.id(),1));
                         return true;
                     }

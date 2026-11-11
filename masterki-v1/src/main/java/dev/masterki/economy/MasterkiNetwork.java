@@ -14,7 +14,8 @@ public final class MasterkiNetwork {
     private MasterkiNetwork(){}
     public record Product(String id,String category,long buy,long sell,int stock,int daily,int cap){}
     public record Task(String id,String item,int amount,long reward){}
-    public record ContractStatus(String id,String item,int amount,long reward,String status,long deadline){}
+    public record ContractStatus(String id,String item,int amount,long reward,String status,long deadline,
+                                 boolean difficult,boolean carriedOver){}
     public record LayoutEntry(String id,int x,int y,int scale,boolean visible){}
 
     public record Action(String kind,String id,int count) implements CustomPacketPayload{
@@ -53,7 +54,7 @@ public final class MasterkiNetwork {
 
     public record Snapshot(boolean open,String tab,long balance,long nextRestock,
                            List<Product> products,List<Task> tasks,List<String> history,List<LayoutEntry> layout,
-                           long nextContracts,long dailyReset,List<ContractStatus> contracts,List<String> dailyDone)
+                           long nextContracts,long dailyReset,List<ContractStatus> contracts,List<String> dailyDone,String scheduleZone)
             implements CustomPacketPayload {
         public static final Type<Snapshot> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("masterki","state"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Snapshot> CODEC=StreamCodec.of(
@@ -77,9 +78,10 @@ public final class MasterkiNetwork {
                 for(LayoutEntry e:p.layout){buf.writeUtf(e.id(),64);buf.writeInt(e.x());buf.writeInt(e.y());buf.writeVarInt(e.scale());buf.writeBoolean(e.visible());}
                 buf.writeLong(p.nextContracts);buf.writeLong(p.dailyReset);
                 buf.writeVarInt(p.contracts.size());
-                for(ContractStatus entry:p.contracts){buf.writeUtf(entry.id(),48);buf.writeUtf(entry.item(),128);buf.writeVarInt(entry.amount());buf.writeLong(entry.reward());buf.writeUtf(entry.status(),24);buf.writeLong(entry.deadline());}
+                for(ContractStatus entry:p.contracts){buf.writeUtf(entry.id(),48);buf.writeUtf(entry.item(),128);buf.writeVarInt(entry.amount());buf.writeLong(entry.reward());buf.writeUtf(entry.status(),24);buf.writeLong(entry.deadline());buf.writeBoolean(entry.difficult());buf.writeBoolean(entry.carriedOver());}
                 buf.writeVarInt(p.dailyDone.size());
                 for(String key:p.dailyDone)buf.writeUtf(key,48);
+                buf.writeUtf(p.scheduleZone(),64);
             },
             buf->{
                 boolean open=buf.readBoolean();String tab=buf.readUtf(32);
@@ -100,11 +102,12 @@ public final class MasterkiNetwork {
                 int number=Math.min(128,buf.readVarInt());
                 List<ContractStatus> contracts=new ArrayList<>(number);
                 for(int i=0;i<number;i++)contracts.add(new ContractStatus(buf.readUtf(48),
-                    buf.readUtf(128),buf.readVarInt(),buf.readLong(),buf.readUtf(24),buf.readLong()));
+                    buf.readUtf(128),buf.readVarInt(),buf.readLong(),buf.readUtf(24),buf.readLong(),
+                    buf.readBoolean(),buf.readBoolean()));
                 int count=Math.min(64,buf.readVarInt());
                 List<String> dailyDone=new ArrayList<>(count);
                 for(int i=0;i<count;i++)dailyDone.add(buf.readUtf(48));
-                return new Snapshot(open,tab,balance,next,rows,tasks,history,layout,nextContracts,dailyReset,contracts,dailyDone);
+                return new Snapshot(open,tab,balance,next,rows,tasks,history,layout,nextContracts,dailyReset,contracts,dailyDone,buf.readUtf(64));
             });
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }

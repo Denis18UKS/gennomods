@@ -17,7 +17,6 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  */
 @EventBusSubscriber(modid="masterki")
 public final class MasterkiRewards {
-    private static final long DAY_MS=86_400_000L;
     private MasterkiRewards() {}
 
     @SubscribeEvent
@@ -44,19 +43,19 @@ public final class MasterkiRewards {
         boolean boss=type==EntityType.WITHER || type==EntityType.WARDEN || type==EntityType.ENDER_DRAGON;
         if(!boss && !(event.getEntity() instanceof Enemy))return;
         var data=Masterki.Saved.of(player.serverLevel());
-        long today=System.currentTimeMillis()/DAY_MS;
+        long today=MasterkiSchedule.cycleDay(System.currentTimeMillis());
         long reward=boss?450L:25L;
         if(data.balance(player.getUUID())>Long.MAX_VALUE-reward)return;
         if(boss){
             if(!data.recordBossHunt(player.getUUID(),today))return;
             int count=data.bossHuntCount(player.getUUID(),today);
             grant(player,reward,"Охота на босса: "+event.getEntity().getName().getString()+" ("+count+"/2)");
-            if(count==2)Masterki.tell(player,"Дневной лимит наград за боссов: 2/2. Сброс в 00:00 UTC.",ChatFormatting.YELLOW);
+            if(count==2)Masterki.tell(player,"Дневной лимит наград за боссов: 2/2. Сброс по расписанию сервера.",ChatFormatting.YELLOW);
         }else{
             if(!data.recordHunt(player.getUUID(),today))return;
             int count=data.huntCount(player.getUUID(),today);
             grant(player,reward,"Охота: "+event.getEntity().getName().getString()+" ("+count+"/12)");
-            if(count==12)Masterki.tell(player,"Дневной лимит обычной охоты: 12/12. Боссы оплачиваются отдельно. Сброс в 00:00 UTC.",ChatFormatting.YELLOW);
+            if(count==12)Masterki.tell(player,"Дневной лимит обычной охоты: 12/12. Боссы оплачиваются отдельно. Сброс по расписанию сервера.",ChatFormatting.YELLOW);
         }
     }
 

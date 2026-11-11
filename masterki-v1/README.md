@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.6 — TEST BUILD
+# Masterki Economy 1.0.7 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -72,8 +72,6 @@ The shop design remains a development build, not yet validated visually at every
 /masterki dev contracts reroll [player]
 /masterki dev contracts reset [player]
 /masterki dev contracts timer [player]
-/masterki dev contracts set rotation_hours <1..168>
-/masterki dev contracts set deadline_hours <1..168>
 /masterki dev fines list [player]
 /masterki dev fines clear <player>
 /masterki dev fines enable
@@ -118,3 +116,26 @@ The shop design remains a development build, not yet validated visually at every
 - Removed the obsolete `/masterki dev contracts set daily_limit` setting and no longer increments the legacy per-day contract counter. Older counter values in world data are harmless and do not constrain rewards.
 - Keep other controls untouched: each of the 3 daily tasks still pays once per task per day; hunting limits stay **12 ordinary mobs / 2 bosses per UTC day**.
 - Existing account balances, historical logs, saved individual contract status, deadlines, fines and other world data persist across the upgrade.
+
+## Unified 05:00 daily contracts (v1.0.7)
+
+- A single server-wide calendar cutoff replaces each player's previous `now + 24h` rotation. Default is **05:00 Asia/Yekaterinburg (Ufa UTC+5)**, i.e. 00:00 UTC. Different players still receive their own 40 randomly chosen contracts from the larger eligible pool, but their boards renew at the same time. Login and server restarts do not restart or extend a cycle.
+- The 40 issued contracts are classified using quantity and actual configured market buy price. A **normal** order expires at the *next* 05:00 cutoff; a **difficult** order expires at 05:00 *two calendar days after issuance*, never after that. Deadline is established at issuance, **not** when the player accepts.
+- The player can accept a difficult contract and keep it through the first renewal, while 40 fresh offers appear alongside it. A carried-over order is labeled as such in the client GUI. Unaccepted old offers vanish without a fine, and each accepted contract that reaches its own deadline becomes overdue with the usual 10% fine. Cancelling an accepted order retains the 5% fine. Fines are applied at most once, including while players are offline.
+- Contracts remain per-player and per-rotation: every distinct order can be paid once, with **no total daily paid-contract limit**. Existing completed records cannot be turned in again.
+- Each order row shows its difficulty, calendar deadline in the configured server time zone, remaining real time and carryover status. Accepting an order with less than two hours remaining requires a second click within six seconds, as a warning.
+- **Migration**: v1.0.6 boards get a cycle key without wiping entries. Accepted contracts with time left are extended to the nearest 05:00 boundary at or after their old deadline (no early expiration due solely to migration); completed records, balances, historical records and fines remain untouched.
+- Also uses the configured cutoff for the three daily shop tasks and the independent daily hunting caps (12 regular enemies + 2 bosses). At the default Ufa setting, this exactly matches their prior 00:00 UTC reset.
+
+### Configuring the reset time / timezone
+
+On first load, the mod creates `config/masterki/contract_schedule.json` on the server:
+
+```json
+{
+  "timezone": "Asia/Yekaterinburg",
+  "reset_hour": 5
+}
+```
+
+The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Changes are picked up by `/masterki admin reload` or a server restart. Do not change the clock during an active contract cycle unless players accept that schedules will be recalculated. The older commands `/masterki dev contracts set rotation_hours` and `... deadline_hours` are removed because all contracts now use the shared daily calendar boundary.
