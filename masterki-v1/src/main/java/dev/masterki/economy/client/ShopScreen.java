@@ -129,13 +129,35 @@ public final class ShopScreen extends Screen {
         button(g,856,11,34,52,"X",false,GOLD);
 
         int[] starts={10,160,310,460,610,760};
-        for(int i=0;i<6;i++)button(g,starts[i],77,142,40,TABS[i],tab.equals(TABS[i]),tab.equals(TABS[i])?GOLD:LIGHT);
+        for(int i=0;i<6;i++){
+            button(g,starts[i],77,142,40,TABS[i],tab.equals(TABS[i]),tab.equals(TABS[i])?GOLD:LIGHT);
+            ItemStack tabIcon=switch(i){
+                case 0 -> new ItemStack(Items.CHEST);
+                case 1 -> new ItemStack(Items.EMERALD);
+                case 2 -> new ItemStack(Items.WRITABLE_BOOK);
+                case 3 -> new ItemStack(Items.BOOK);
+                case 4 -> new ItemStack(Items.CLOCK);
+                default -> new ItemStack(Items.COMPARATOR);
+            };
+            g.renderItem(tabIcon,starts[i]+7,88);
+        }
 
         panel(g,10,123,170,332,false);
         text(g,"⚙  Категории",28,134,GOLD);
         for(int i=0;i<CATEGORIES.length;i++){
             int y=157+i*36;
             button(g,18,y,153,32,CATEGORIES[i],CATEGORIES[i].equals(category),LIGHT);
+            ItemStack categoryIcon=switch(i){
+                case 0 -> new ItemStack(Items.IRON_INGOT);
+                case 1 -> stack("create:cogwheel").isEmpty()?new ItemStack(Items.COPPER_INGOT):stack("create:cogwheel");
+                case 2 -> new ItemStack(Items.IRON_PICKAXE);
+                case 3 -> new ItemStack(Items.BRICKS);
+                case 4 -> new ItemStack(Items.WHEAT);
+                case 5 -> new ItemStack(Items.NETHER_STAR);
+                case 6 -> new ItemStack(Items.ENCHANTING_TABLE);
+                default -> new ItemStack(Items.NETHER_STAR);
+            };
+            g.renderItem(categoryIcon,25,y+9);
         }
 
         panel(g,186,123,454,332,false);
@@ -241,7 +263,7 @@ public final class ShopScreen extends Screen {
     private void gear(GuiGraphics g,int cx,int cy,int radius,int color){
         g.fill(cx-radius/2,cy-radius/2,cx+radius/2,cy+radius/2,color);
         for(int a=0;a<8;a++){
-            double angle=a*Math.PI/4;int x=cx+(int)(Math.cos(angle)*radius);int y=cy+(int)(Math.sin(angle)*radius);
+            double angle=a*Math.PI/4+System.currentTimeMillis()/9000.0;int x=cx+(int)(Math.cos(angle)*radius);int y=cy+(int)(Math.sin(angle)*radius);
             g.fill(x-3,y-3,x+3,y+3,color);
         }
         g.fill(cx-4,cy-4,cx+4,cy+4,DARK);
