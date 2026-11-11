@@ -1,39 +1,47 @@
-# Masterki Economy 1.0.0 (development build)
+# Masterki Economy 1.0.0 — TEST BUILD
 
-A client/server NeoForge 1.21.1 mod using Java 21. Install the **same JAR on client and dedicated server**.
+NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
-## Implemented
+## Included
 
-- Real ShopScreen with brass/copper panels inspired by the user-approved screenshot (not a chest GUI)
-- Original Masterki gold/brass M coin asset, embedded from user-provided visual reference
-- Inventory balance widget and an optional, brief main HUD indicator
-- Server-validated /shop, purchases, sales, bulk discount tiers, stock limits
-- /money, /money pay <player> <amount>, /money top
-- Live categories, search, sorting, in-stock filter, favourites, history and shop navigation
-- Daily server restocking every 24 real hours; uses persisted epoch time
-- At most 200 configured items from vanilla, optional Create, and other installed mods
-- Up to 40 delivery contracts, 5 completions per real day
-- User accounts keyed by UUID, and SavedData-backed balances, stock, daily limits and receipts
-- Daily server buyback quotas to limit automated resource farming
-- Admin /masterki admin money add/set, restock, reload
-- Editable `config/masterki/products.json`, generated automatically on first access
-
-## Limitations (not yet finished)
-
-The screenshot is used as the layout/style reference. The actual GUI is rendered in code, rather than identical embedded pixels. Main shop and inventory display work through the installed client mod. Physical Create terminals, Create Aeronautics cargo, achievement bonuses, hunting rewards, building contracts, player auction houses and advanced item-component trading are NOT implemented yet. These need mod compatibility testing and proper server-side validation.
-
-No full in-game multiplayer QA has been performed. Back up the world and test on a staging server. Do not use as a production economy until exploit testing.
+- Full custom `ShopScreen` (not a chest or chat UI), brass/copper Create-inspired layout based on the user-supplied screenshot; M coin PNG from the approved GUI reference
+- Currency **мастерки (М)**, initial 300 М account; UUID-based persistent balances
+- Balance widget by the vanilla inventory, optional temporary main-HUD indicator
+- Separate shop/sell/categories, search, filters, price sorting, favorites, item details, quantity choices and confirmation via server-side transaction
+- Items from vanilla, optional Create, other loaded mods, editable `config/masterki/products.json`
+- Server-validated purchases, sales, bulk discounts, bounded stock, per-day buyback caps, payment history
+- 24-hour **real-time** restocking with persisted timestamp; OP forced restock
+- 40 production contracts (includes Create parts when installed), maximum 5 completions per real day
+- 3 smaller rotating daily tasks, each claimable once per real day per player
+- Automated limited payouts from advancement achievements (one-time), first discovered dimensions and biomes (one-time), and hostile mobs (maximum 12 paid kills per real day)
+- /money transfers and ranking, /shop history, /contracts
+- Economy SavedData in overworld, held across restarts and player deaths
+- Disables monetary rewards and sales in Creative mode; verifies inventory and balances on server
 
 ## Commands
 
-`/shop`, `/money`, `/money pay <player> <amount>`, `/money top`, `/contracts`.
+`/shop`, `/shop history`, `/money`, `/money pay <player> <amount>`,
+`/money top`, `/contracts`.
 
-Admin (OP level 2): `/masterki admin restock`, `/masterki admin reload`, `/masterki admin money add <player> <amount>`, `/masterki admin money set <player> <amount>`.
+Admin (OP level 2): `/masterki admin restock`, `/masterki admin reload`,
+`/masterki admin money add <player> <amount>`, `/masterki admin money set <player> <amount>`.
 
-## Building
+## What remains out of scope for this test build
 
-`gradle -p masterki-v1 build` with JDK 21 and Gradle 9.2.1. GitHub Actions workflow included.
+The GUI follows the screenshot's **layout and aesthetic**, but is code-rendered rather than a pixel-for-pixel reproduction of the reference. Full survival multiplayer interaction tests and client rendering tests have not been run. Dedicated server startup was exercised in GitHub Actions.
+
+**Not implemented:** physical Create export terminals/kinetic automation, Create Aeronautics delivery routes, building contracts, player auction houses, advanced component-bearing mod item sales, automatic advanced Apotheosis boss-tier valuation and custom original GUI particle animations. These are separate compatibility-heavy features. Please do not treat them as ready.
+
+Shop defaults are a starting economy, not a final balance. Review `config/masterki/products.json` before opening a public server: arbitrary mod items can be valuable or overpowered. Only unmodified stacks are accepted for selling to avoid wiping enchantments, stored inventory contents or custom data.
+
+## Building / testing
+
+JDK 21 + Gradle 9.2.1:
+`gradle -p masterki-v1 build`.
+Client and server use the same generated JAR.
+
+The included GitHub Actions workflows build the project and start a disposable NeoForge 1.21.1 dedicated server with EULA acceptance **only in CI**. No multiplayer UI click test has been performed. Back up the world before installing the JAR.
 
 ## Storage
 
-World-level SavedData: `masterki_economy`. Balances persist across player death and logout. Stock and restock timestamps survive server restart. The UI reads state from signed-in authoritative server packets.
+Overworld SavedData `masterki_economy` contains player balances, purchases, stock, earned advancements/explorations, daily hunt/quest limits, and resupply clock. No database or external service is required.
