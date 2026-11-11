@@ -30,13 +30,11 @@ import net.minecraft.world.level.saveddata.SavedData;
 /** Persistent, per-player contracts. Authoritative on the server; no client-supplied rewards. */
 public final class MasterkiContracts extends SavedData {
     private static final long HOUR = 3_600_000L;
-    private static final long DAY = 24L*HOUR;
     private static final int MAX_LOG = 64;
     private final Map<UUID, Board> boards = new HashMap<>();
     private final Map<UUID, List<Fine>> fineHistory = new HashMap<>();
     private int rotationHours = 24;
     private int deadlineHours = 24;
-    private int dailyLimit = 5;
     private int latePercent = 10;
     private int cancelPercent = 5;
     private boolean finesEnabled = true;
@@ -184,11 +182,6 @@ public final class MasterkiContracts extends SavedData {
             expire(uuid,b,now);
             Masterki.tell(player,"Время выполнения контракта закончилось.",ChatFormatting.RED);return false;
         }
-        long day=now/DAY;
-        if(economy.contractsCompleted(uuid,day)>=dailyLimit){
-            Masterki.tell(player,"Дневной лимит: "+dailyLimit+" оплачиваемых контрактов.",ChatFormatting.RED);
-            return false;
-        }
         if(player.getAbilities().instabuild){
             Masterki.tell(player,"В творческом режиме нельзя получать награды за контракты.",ChatFormatting.RED);
             return false;
@@ -204,7 +197,6 @@ public final class MasterkiContracts extends SavedData {
         if(economy.balance(uuid)>Long.MAX_VALUE-e.reward)return false;
         take(player,sample,e.amount);
         e.state="completed"; // commit the state before the reward can be paid again
-        economy.completeContract(uuid,day);
         economy.setBalance(uuid,economy.balance(uuid)+e.reward);
         economy.log(uuid,"Контракт "+e.poolId+": +"+e.reward+" М");
         setDirty();
@@ -307,10 +299,7 @@ public final class MasterkiContracts extends SavedData {
                             MasterkiContracts s=of(c.getSource().getLevel());s.rotationHours=IntegerArgumentType.getInteger(c,"hours");s.setDirty();info(c.getSource(),"Интервал обновления: "+s.rotationHours+" ч.");return 1;})))
                     .then(Commands.literal("deadline_hours")
                         .then(Commands.argument("hours",IntegerArgumentType.integer(1,168)).executes(c->{
-                            MasterkiContracts s=of(c.getSource().getLevel());s.deadlineHours=IntegerArgumentType.getInteger(c,"hours");s.setDirty();info(c.getSource(),"Срок выполнения: "+s.deadlineHours+" ч.");return 1;})))
-                    .then(Commands.literal("daily_limit")
-                        .then(Commands.argument("count",IntegerArgumentType.integer(1,20)).executes(c->{
-                            MasterkiContracts s=of(c.getSource().getLevel());s.dailyLimit=IntegerArgumentType.getInteger(c,"count");s.setDirty();info(c.getSource(),"Лимит: "+s.dailyLimit);return 1;})))))
+                            MasterkiContracts s=of(c.getSource().getLevel());s.deadlineHours=IntegerArgumentType.getInteger(c,"hours");s.setDirty();info(c.getSource(),"Срок выполнения: "+s.deadlineHours+" ч.");return 1;})))))
             .then(Commands.literal("fines")
                 .then(Commands.literal("list")
                     .executes(c->of(c.getSource().getLevel()).adminPlayer(c.getSource(),c.getSource().getPlayerOrException().getUUID(),"fines_list"))
@@ -335,7 +324,6 @@ public final class MasterkiContracts extends SavedData {
     @Override public CompoundTag save(CompoundTag tag,HolderLookup.Provider registries){
         tag.putInt("RotationHours",rotationHours);
         tag.putInt("DeadlineHours",deadlineHours);
-        tag.putInt("DailyLimit",dailyLimit);
         tag.putInt("LatePercent",latePercent);
         tag.putInt("CancelPercent",cancelPercent);
         tag.putBoolean("FinesEnabled",finesEnabled);
@@ -376,7 +364,6 @@ public final class MasterkiContracts extends SavedData {
         MasterkiContracts s=new MasterkiContracts();
         s.rotationHours=tag.contains("RotationHours")?Math.clamp(tag.getInt("RotationHours"),1,168):24;
         s.deadlineHours=tag.contains("DeadlineHours")?Math.clamp(tag.getInt("DeadlineHours"),1,168):24;
-        s.dailyLimit=tag.contains("DailyLimit")?Math.clamp(tag.getInt("DailyLimit"),1,20):5;
         s.latePercent=tag.contains("LatePercent")?Math.clamp(tag.getInt("LatePercent"),0,100):10;
         s.cancelPercent=tag.contains("CancelPercent")?Math.clamp(tag.getInt("CancelPercent"),0,100):5;
         s.finesEnabled=!tag.contains("FinesEnabled")||tag.getBoolean("FinesEnabled");

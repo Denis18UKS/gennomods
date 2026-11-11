@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.5 — TEST BUILD
+# Masterki Economy 1.0.6 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -11,7 +11,7 @@ NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client 
 - Items from vanilla, optional Create, other loaded mods, editable `config/masterki/products.json`
 - Server-validated purchases, sales, bulk discounts, bounded stock, per-day buyback caps, payment history
 - 24-hour **real-time** restocking with persisted timestamp; OP forced restock
-- 40 production contracts (includes Create parts when installed), maximum 5 completions per real day
+- 40 individually rotated production contracts (includes Create parts when installed), each paid once per rotation; no daily total cap
 - 3 smaller rotating daily tasks, each claimable once per real day per player
 - Automated limited payouts from advancement achievements (one-time), first discovered dimensions and biomes (one-time), and hostile mobs (12 ordinary paid kills plus 2 boss paid kills per UTC day)
 - /money transfers and ranking, /shop history, /contracts
@@ -61,7 +61,7 @@ The shop design remains a development build, not yet validated visually at every
 ## Individual contracts and daily tasks (1.0.3)
 - **The original **40 visible contracts** remain available to each player per rotation (not six). Each player's board is selected from an expanded pool of up to **120 different contracts**, with independently randomized order, quantities and rewards.
 - Contracts are accepted before delivery; each accepted contract has its own deadline (24 real hours by default). Completed contracts display **Выполнено** until the rotation changes.
-- A specific contract is paid only once per rotation. The existing limit of five paid contracts per real day stays in place. All validation and payouts happen on the server.
+- A specific contract is paid only once per rotation; **there is no daily limit on the number of different contracts** a player may complete. All validation and payouts happen on the server.
 - Expired accepted contracts incur a 10% fine, and cancelled accepted contracts a 5% fine, from the reward. No negative balances or fine debt. Fines are recorded in the economy ledger and the persistent fine log.
 - The three daily tasks are **not** converted into contracts. They still rotate by UTC day, can be claimed once per day per player, and now show **Выполнено** in the GUI with the daily reset timer.
 - Everything persists to `world/data/masterki_contracts.dat` separately from existing balances and shop items.
@@ -74,7 +74,6 @@ The shop design remains a development build, not yet validated visually at every
 /masterki dev contracts timer [player]
 /masterki dev contracts set rotation_hours <1..168>
 /masterki dev contracts set deadline_hours <1..168>
-/masterki dev contracts set daily_limit <1..20>
 /masterki dev fines list [player]
 /masterki dev fines clear <player>
 /masterki dev fines enable
@@ -111,3 +110,11 @@ The shop design remains a development build, not yet validated visually at every
 - The two daily counters are persisted separately within `masterki_economy.dat` as `Hunts` / `HuntDay` and new `BossHunts` / `BossHuntDay`. Existing balances, 12-kill count, inventory, shop and contract data remain intact during upgrade.
 - Both reset at **00:00 UTC**, not 24 hours after the last kill. The new plain-player command `/hunt` displays both counters plus the remaining time to reset.
 - Payout messages include progress (e.g. `3/12`, `1/2`); a separate warning appears on the kill that fills each cap, not on every later unpaid kill.
+
+## Contract anti-abuse correction (v1.0.6)
+
+- Removed the mistaken total daily limit of **5 paid contracts**. Players can complete every distinct contract available in their personal board, including all 40 in one day.
+- Anti-exploit is now **per contract and per rotation**, based on the persistent contract state. The server only rewards a contract while its state is `accepted` and its deadline has not passed. A successful turn-in transitions to `completed`, consumes the resources once, records the ledger entry and prevents all further payments for that contract ID until the next rotation.
+- Removed the obsolete `/masterki dev contracts set daily_limit` setting and no longer increments the legacy per-day contract counter. Older counter values in world data are harmless and do not constrain rewards.
+- Keep other controls untouched: each of the 3 daily tasks still pays once per task per day; hunting limits stay **12 ordinary mobs / 2 bosses per UTC day**.
+- Existing account balances, historical logs, saved individual contract status, deadlines, fines and other world data persist across the upgrade.
