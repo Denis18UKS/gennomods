@@ -1,0 +1,53 @@
+name: Test NeoForge dedicated servers for Masterki and Player Utilities
+on:
+  push:
+    branches: [build/masterki-economy-playerutilities-v1]
+    paths:
+      - 'masterki-v1/**'
+      - 'playerutilities-v1/**'
+      - '.github/workflows/smoke-masterki-playerutilities.yml'
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [masterki-v1,playerutilities-v1]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Accept EULA only in disposable CI test world
+        run: |
+          mkdir -p ${{ matrix.project }}/runs/server ${{ matrix.project }}/run ${{ matrix.project }}/run/server
+          printf 'eula=true\n' > ${{ matrix.project }}/runs/server/eula.txt
+          printf 'eula=true\n' > ${{ matrix.project }}/run/eula.txt
+          printf 'eula=true\n' > ${{ matrix.project }}/run/server/eula.txt
+      - name: Start temporary dedicated NeoForge server and check successful loading
+        shell: bash
+        run: |
+          set +e
+          timeout -s TERM 175s gradle -p ${{ matrix.project }} runServer --no-daemon --console plain > /tmp/server.log 2>&1
+          code=$?
+          grep -E 'Done \(|Failed to|ERROR|Exception|requires|Mod File' /tmp/server.log | tail -60 || true
+          echo "Gradle exit status: $code"
+          if grep -q 'Done (' /tmp/server.log; then
+            echo "SERVER_BOOT_SUCCESS"
+            exit 0
+          else
+            tail -100 /tmp/server.log
+            echo "SERVER_BOOT_FAILURE"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.project }}-server-smoke-log
+          path: /tmp/server.log
