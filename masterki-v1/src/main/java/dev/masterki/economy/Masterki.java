@@ -197,12 +197,19 @@ public final class Masterki {
     }
     public static List<Contract> contracts(){
         ArrayList<Contract> result=new ArrayList<>();
-        int n=0;
+        List<Offer> selected=new ArrayList<>();
         for(Offer offer:offers()){
-            if(n++>=40)break;
+            if(offer.category().equals("Create")&&selected.size()<16)selected.add(offer);
+        }
+        for(Offer offer:offers()){
+            if(selected.size()>=40)break;
+            if(!selected.contains(offer))selected.add(offer);
+        }
+        int n=0;
+        for(Offer offer:selected){
             int quantity=offer.buy()<40?64:offer.buy()<300?32:8;
             long reward=Math.max(50,offer.sell()*quantity*120/100);
-            result.add(new Contract("c"+n,offer.id(),quantity,reward));
+            result.add(new Contract("c"+(++n),offer.id(),quantity,reward));
         }
         return result;
     }
@@ -231,7 +238,10 @@ public final class Masterki {
     }
     private void commands(RegisterCommandsEvent event){
         var d=event.getDispatcher();
-        d.register(Commands.literal("shop").executes(c -> { sync(c.getSource().getPlayerOrException(),true,"");return 1;}));
+        d.register(Commands.literal("shop")
+            .executes(c -> {sync(c.getSource().getPlayerOrException(),true,"");return 1;})
+            .then(Commands.literal("history")
+                .executes(c -> {sync(c.getSource().getPlayerOrException(),true,"history");return 1;})));
         d.register(Commands.literal("contracts").executes(c -> { sync(c.getSource().getPlayerOrException(),true,"contracts");return 1;}));
         d.register(Commands.literal("money")
             .executes(c -> {ServerPlayer p=c.getSource().getPlayerOrException();tell(p,"Баланс: "+Saved.of(p.serverLevel()).balance(p.getUUID())+" М",ChatFormatting.GOLD);return 1;})
