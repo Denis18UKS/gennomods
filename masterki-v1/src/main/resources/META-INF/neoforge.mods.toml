@@ -3,7 +3,7 @@ loaderVersion="[4,)"
 license="MIT"
 [[mods]]
 modId="masterki"
-version="1.0.4"
+version="1.0.5"
 displayName="Masterki Economy"
 description="Brass economy and shop with Client GUI, virtual Masterki money and real-time daily restocking."
 [[dependencies.masterki]]

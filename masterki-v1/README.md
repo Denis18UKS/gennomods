@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.4 — TEST BUILD
+# Masterki Economy 1.0.5 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -13,7 +13,7 @@ NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client 
 - 24-hour **real-time** restocking with persisted timestamp; OP forced restock
 - 40 production contracts (includes Create parts when installed), maximum 5 completions per real day
 - 3 smaller rotating daily tasks, each claimable once per real day per player
-- Automated limited payouts from advancement achievements (one-time), first discovered dimensions and biomes (one-time), and hostile mobs (maximum 12 paid kills per real day)
+- Automated limited payouts from advancement achievements (one-time), first discovered dimensions and biomes (one-time), and hostile mobs (12 ordinary paid kills plus 2 boss paid kills per UTC day)
 - /money transfers and ranking, /shop history, /contracts
 - Economy SavedData in overworld, held across restarts and player deaths
 - Disables monetary rewards and sales in Creative mode; verifies inventory and balances on server
@@ -102,3 +102,12 @@ The shop design remains a development build, not yet validated visually at every
 - New mod items use deterministic **tier/material-based suggested prices** instead of uniformly costing 70 or 120 Masterki. The JSON is the final authority for manual balance adjustments. The default sell price stays below buy price.
 - Large product catalogs are synchronized in **96-product network chunks**, preventing oversized custom payloads with large modpacks. Full catalog data is only streamed when opening or updating the shop, not on every login.
 - To apply edits to either JSON during gameplay, use the existing OP command `/masterki admin reload`. Restart is not needed.
+
+## Hunting fix (v1.0.5)
+
+- The hunting caps are **independent per player**: up to **12 paid ordinary hostile kills** per UTC calendar day at **25 M** each; up to **2 paid vanilla boss kills** (Wither, Warden and Ender Dragon) at **450 M** each.
+- **Ender Dragon payouts are fixed**: it is classified as a boss explicitly, before testing the `Enemy` marker, which does not apply to the dragon.
+- **Wither Skeleton is not a boss** and correctly earns only the ordinary 25 M reward. No credit for mobs killed without a player-attributed damage source; no hunting payouts in Creative mode.
+- The two daily counters are persisted separately within `masterki_economy.dat` as `Hunts` / `HuntDay` and new `BossHunts` / `BossHuntDay`. Existing balances, 12-kill count, inventory, shop and contract data remain intact during upgrade.
+- Both reset at **00:00 UTC**, not 24 hours after the last kill. The new plain-player command `/hunt` displays both counters plus the remaining time to reset.
+- Payout messages include progress (e.g. `3/12`, `1/2`); a separate warning appears on the kill that fills each cap, not on every later unpaid kill.

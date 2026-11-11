@@ -225,6 +225,17 @@ public final class Masterki {
             .then(Commands.literal("history")
                 .executes(c -> {sync(c.getSource().getPlayerOrException(),true,"history");return 1;})));
         d.register(Commands.literal("contracts").executes(c -> { sync(c.getSource().getPlayerOrException(),true,"contracts");return 1;}));
+        d.register(Commands.literal("hunt").executes(c -> {
+            ServerPlayer player=c.getSource().getPlayerOrException();
+            Saved data=Saved.of(player.serverLevel());
+            long now=System.currentTimeMillis(),day=now/DAY_MS;
+            long seconds=((day+1)*DAY_MS-now)/1000;
+            tell(player,"Охота: обычные мобы "+data.huntCount(player.getUUID(),day)+"/12, "+
+                "боссы "+data.bossHuntCount(player.getUUID(),day)+"/2. "+
+                "Обновление через "+String.format(java.util.Locale.ROOT,"%02d:%02d:%02d",
+                    seconds/3600,seconds/60%60,seconds%60)+".",ChatFormatting.GOLD);
+            return 1;
+        }));
         d.register(Commands.literal("money")
             .executes(c -> {ServerPlayer p=c.getSource().getPlayerOrException();tell(p,"Баланс: "+Saved.of(p.serverLevel()).balance(p.getUUID())+" М",ChatFormatting.GOLD);return 1;})
             .then(Commands.literal("top").executes(c -> top(c.getSource().getPlayerOrException()))));
@@ -446,6 +457,8 @@ public final class Masterki {
         final Map<UUID,java.util.Set<String>> discoveries=new HashMap<>();
         final Map<UUID,Integer> huntedToday=new HashMap<>();
         final Map<UUID,Long> huntDay=new HashMap<>();
+        final Map<UUID,Integer> bossesToday=new HashMap<>();
+        final Map<UUID,Long> bossDay=new HashMap<>();
         final Map<UUID,Long> dailyDay=new HashMap<>();
         final Map<UUID,java.util.Set<String>> dailyCompleted=new HashMap<>();
         final Map<String,Integer> soldToday=new HashMap<>();
@@ -476,14 +489,29 @@ public final class Masterki {
             if(first)setDirty();
             return first;
         }
+        int huntCount(UUID uuid,long today){
+            return huntDay.getOrDefault(uuid,-1L)==today?huntedToday.getOrDefault(uuid,0):0;
+        }
+        int bossHuntCount(UUID uuid,long today){
+            return bossDay.getOrDefault(uuid,-1L)==today?bossesToday.getOrDefault(uuid,0):0;
+        }
         boolean recordHunt(UUID uuid,long today){
+            if(huntCount(uuid,today)>=12)return false;
             if(huntDay.getOrDefault(uuid,-1L)!=today){
                 huntDay.put(uuid,today);
                 huntedToday.put(uuid,0);
             }
-            int count=huntedToday.getOrDefault(uuid,0);
-            if(count>=12)return false;
-            huntedToday.put(uuid,count+1);
+            huntedToday.merge(uuid,1,Integer::sum);
+            setDirty();
+            return true;
+        }
+        boolean recordBossHunt(UUID uuid,long today){
+            if(bossHuntCount(uuid,today)>=2)return false;
+            if(bossDay.getOrDefault(uuid,-1L)!=today){
+                bossDay.put(uuid,today);
+                bossesToday.put(uuid,0);
+            }
+            bossesToday.merge(uuid,1,Integer::sum);
             setDirty();
             return true;
         }
@@ -544,6 +572,8 @@ public final class Masterki {
                 u.putLong("TaskDay",taskDay.getOrDefault(e.getKey(),-1L));
                 u.putInt("Hunts",huntedToday.getOrDefault(e.getKey(),0));
                 u.putLong("HuntDay",huntDay.getOrDefault(e.getKey(),-1L));
+                u.putInt("BossHunts",bossesToday.getOrDefault(e.getKey(),0));
+                u.putLong("BossHuntDay",bossDay.getOrDefault(e.getKey(),-1L));
                 u.putLong("DailyDay",dailyDay.getOrDefault(e.getKey(),-1L));
                 ListTag finished=new ListTag();
                 for(String task:dailyCompleted.getOrDefault(e.getKey(),java.util.Set.of())){
@@ -580,6 +610,8 @@ public final class Masterki {
                 saved.taskDay.put(uuid,u.getLong("TaskDay"));
                 saved.huntedToday.put(uuid,u.getInt("Hunts"));
                 saved.huntDay.put(uuid,u.getLong("HuntDay"));
+                saved.bossesToday.put(uuid,u.getInt("BossHunts"));
+                saved.bossDay.put(uuid,u.contains("BossHuntDay")?u.getLong("BossHuntDay"):-1L);
                 saved.dailyDay.put(uuid,u.getLong("DailyDay"));
                 ListTag dailyDone=u.getList("DailyDone",Tag.TAG_COMPOUND);
                 java.util.Set<String> done=new java.util.HashSet<>();

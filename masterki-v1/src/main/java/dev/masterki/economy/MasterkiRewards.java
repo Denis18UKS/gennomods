@@ -1,10 +1,9 @@
 package dev.masterki.economy;
 
-import java.util.UUID;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.monster.Enemy;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -14,7 +13,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 /**
  * Server-only earned currency. Unique achievements/locations are paid once.
- * Hunting has a strict daily cap, to avoid passive mob farms printing money.
+ * Hunting has separate daily caps: 12 ordinary hostile mobs and 2 vanilla bosses.
  */
 @EventBusSubscriber(modid="masterki")
 public final class MasterkiRewards {
@@ -38,15 +37,27 @@ public final class MasterkiRewards {
     @SubscribeEvent
     public static void onHostileDeath(LivingDeathEvent event) {
         if(!(event.getSource().getEntity() instanceof ServerPlayer player)||player.getAbilities().instabuild)return;
-        if(!(event.getEntity() instanceof Enemy))return;
         if(event.getEntity()==player)return;
+        // Dragon is NOT an Enemy in Minecraft 1.21.1, so check boss types first.
+        // Counting each category separately prevents 12 zombies from blocking a boss reward.
+        var type=event.getEntity().getType();
+        boolean boss=type==EntityType.WITHER || type==EntityType.WARDEN || type==EntityType.ENDER_DRAGON;
+        if(!boss && !(event.getEntity() instanceof Enemy))return;
         var data=Masterki.Saved.of(player.serverLevel());
         long today=System.currentTimeMillis()/DAY_MS;
-        // At most 12 paid kills for each player per real-world day.
-        if(!data.recordHunt(player.getUUID(),today))return;
-        String id=BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType()).getPath();
-        long reward=id.contains("wither")||id.contains("ender_dragon")||id.contains("warden")?450:25;
-        grant(player,reward,"Охота: "+event.getEntity().getName().getString());
+        long reward=boss?450L:25L;
+        if(data.balance(player.getUUID())>Long.MAX_VALUE-reward)return;
+        if(boss){
+            if(!data.recordBossHunt(player.getUUID(),today))return;
+            int count=data.bossHuntCount(player.getUUID(),today);
+            grant(player,reward,"Охота на босса: "+event.getEntity().getName().getString()+" ("+count+"/2)");
+            if(count==2)Masterki.tell(player,"Дневной лимит наград за боссов: 2/2. Сброс в 00:00 UTC.",ChatFormatting.YELLOW);
+        }else{
+            if(!data.recordHunt(player.getUUID(),today))return;
+            int count=data.huntCount(player.getUUID(),today);
+            grant(player,reward,"Охота: "+event.getEntity().getName().getString()+" ("+count+"/12)");
+            if(count==12)Masterki.tell(player,"Дневной лимит обычной охоты: 12/12. Боссы оплачиваются отдельно. Сброс в 00:00 UTC.",ChatFormatting.YELLOW);
+        }
     }
 
     @SubscribeEvent
