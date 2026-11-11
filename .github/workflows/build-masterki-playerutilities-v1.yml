@@ -1,0 +1,32 @@
+name: Build Masterki Economy + Player Utilities NeoForge 1.21.1
+on:
+  push:
+    branches: [build/masterki-economy-playerutilities-v1]
+    paths:
+      - 'masterki-v1/**'
+      - 'playerutilities-v1/**'
+      - '.github/workflows/build-masterki-playerutilities-v1.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [masterki-v1,playerutilities-v1]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+      - name: Compile mod with actual NeoForge
+        run: gradle -p ${{ matrix.project }} clean build --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-jar
+          path: ${{ matrix.project }}/build/libs/*.jar

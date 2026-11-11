@@ -1,0 +1,20 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="masterki"
+version="1.0.0"
+displayName="Masterki Economy"
+description="Brass economy and shop with Client GUI, virtual Masterki money and real-time daily restocking."
+[[dependencies.masterki]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.masterki]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
