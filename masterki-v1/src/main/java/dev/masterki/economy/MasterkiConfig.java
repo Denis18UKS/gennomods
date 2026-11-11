@@ -55,7 +55,7 @@ public final class MasterkiConfig {
                         if(location==null||!BuiltInRegistries.ITEM.containsKey(location)||
                             BuiltInRegistries.ITEM.get(location)==Items.AIR)continue;
                         String category=o.has("category")?o.get("category").getAsString():"Ресурсы";
-                        long buy=Math.max(1,o.get("buy").getAsLong());
+                        long buy=Math.min(1_000_000_000L,Math.max(1,o.get("buy").getAsLong()));
                         long sell=Math.max(0,Math.min(buy-1,o.get("sell").getAsLong()));
                         int cap=Math.max(1,Math.min(1000000,o.get("maxStock").getAsInt()));
                         int daily=Math.max(0,Math.min(cap,o.get("dailyRestock").getAsInt()));
