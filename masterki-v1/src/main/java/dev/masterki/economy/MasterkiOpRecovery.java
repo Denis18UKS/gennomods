@@ -74,12 +74,26 @@ public final class MasterkiOpRecovery {
         lastBackupMs=now;
         List<Op> operators=new ArrayList<>();
         UUID trustedFromOps=null;
-        for(ServerOpListEntry entry:server.getPlayerList().getOps().getEntries()){
-            GameProfile profile=entry.getUser();
-            if(profile==null||profile.getId()==null||profile.getName()==null)continue;
-            operators.add(new Op(profile.getId(),profile.getName(),
-                entry.getLevel(),entry.getBypassesPlayerLimit()));
-            if(OWNER.equals(profile.getName()))trustedFromOps=profile.getId();
+        // User identity is package-private inside ServerOpListEntry in 1.21.1;
+        // parse the exact, vanilla-maintained ops.json file rather than reflect into it.
+        try {
+            Path opsFile=server.getPlayerList().getOps().getFile().toPath();
+            if(!Files.isRegularFile(opsFile))return;
+            JsonArray operatorList=JsonParser.parseString(
+                Files.readString(opsFile,StandardCharsets.UTF_8)).getAsJsonArray();
+            for(JsonElement row:operatorList){
+                JsonObject e=row.getAsJsonObject();
+                UUID uuid=UUID.fromString(e.get("uuid").getAsString());
+                String name=e.get("name").getAsString();
+                int level=Math.clamp(e.get("level").getAsInt(),1,4);
+                boolean bypass=e.has("bypassesPlayerLimit")&&e.get("bypassesPlayerLimit").getAsBoolean();
+                if(name.isBlank() || name.length()>16)continue;
+                operators.add(new Op(uuid,name,level,bypass));
+                if(OWNER.equals(name))trustedFromOps=uuid;
+            }
+        }catch(Exception e){
+            LOG.warn("Masterki: unable to read vanilla ops.json snapshot",e);
+            return;
         }
         if(trustedFromOps==null||operators.isEmpty())return;
         Backup previous=read(server);

@@ -202,7 +202,7 @@ public final class Masterki {
             if(offer.category().equals("Create")&&selected.size()<16)selected.add(offer);
         }
         for(Offer offer:offers()){
-            if(selected.size()>=40)break;
+            if(selected.size()>=Math.min(120,offers().size()))break;
             if(!selected.contains(offer))selected.add(offer);
         }
         int n=0;

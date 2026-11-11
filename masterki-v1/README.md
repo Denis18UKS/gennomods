@@ -59,7 +59,7 @@ Overworld SavedData `masterki_economy` contains player balances, purchases, stoc
 The shop design remains a development build, not yet validated visually at every UI scale or with all optional mods.
 
 ## Individual contracts and daily tasks (1.0.3)
-- **The full original catalog** of 40+ contracts remains available to each player. No shrinkage to six contracts. Each player's 24-hour rotation independently shuffles the order, quantities and rewards.
+- **The original **40 visible contracts** remain available to each player per rotation (not six). Each player's board is selected from an expanded pool of up to **120 different contracts**, with independently randomized order, quantities and rewards.
 - Contracts are accepted before delivery; each accepted contract has its own deadline (24 real hours by default). Completed contracts display **Выполнено** until the rotation changes.
 - A specific contract is paid only once per rotation. The existing limit of five paid contracts per real day stays in place. All validation and payouts happen on the server.
 - Expired accepted contracts incur a 10% fine, and cancelled accepted contracts a 5% fine, from the reward. No negative balances or fine debt. Fines are recorded in the economy ledger and the persistent fine log.

@@ -113,20 +113,29 @@ public final class MasterkiContracts extends SavedData {
                 || BuiltInRegistries.ITEM.get(id)==Items.AIR;
         });
         Collections.shuffle(pool,ThreadLocalRandom.current());
-        // Preserve the complete 40+ contract catalog. Personal rotations shuffle
-        // ordering, quantities and rewards, rather than hiding most contracts.
+        // Keep 40 visible contracts, as in v1.0.2, but rotate them from an
+        // expanded 120-contract pool. Avoid repeating previous items when possible.
         Map<String,Integer> previousVariants=new HashMap<>();
         for(String value:board.previous){
             int sep=value.lastIndexOf(':');
             if(sep>0)try {previousVariants.put(value.substring(0,sep),
                 Integer.parseInt(value.substring(sep+1)));}catch(NumberFormatException ignored){}
         }
+        List<Masterki.Contract> picked=new ArrayList<>();
+        for(Masterki.Contract c:pool){
+            if(picked.size()>=40)break;
+            if(!previousVariants.containsKey(c.id()))picked.add(c);
+        }
+        for(Masterki.Contract c:pool){
+            if(picked.size()>=40)break;
+            if(picked.stream().noneMatch(p->p.id().equals(c.id())))picked.add(c);
+        }
         board.rotation++;
         board.previous.clear();
         board.entries.clear();
         board.entries.addAll(retained);
         int[] variants={75,100,125,150};
-        for(Masterki.Contract c:pool){
+        for(Masterki.Contract c:picked){
             int prior=previousVariants.getOrDefault(c.id(),-1);
             int variant=variants[ThreadLocalRandom.current().nextInt(variants.length)];
             if(variant==prior)variant=variants[(java.util.Arrays.binarySearch(variants,variant)+1)%variants.length];
