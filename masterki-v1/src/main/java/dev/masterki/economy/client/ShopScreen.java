@@ -47,6 +47,10 @@ public final class ShopScreen extends Screen {
         px=(int)((width-VW*uiScale)/2f);py=(int)((height-VH*uiScale)/2f);
         filter();
     }
+    private List<MasterkiNetwork.Task> tasksForTab(){
+        boolean daily=tab.equals("Задания");
+        return data.tasks().stream().filter(t->t.id().startsWith("daily:")==daily).toList();
+    }
     private void filter(){
         visible.clear();
         String query=search.toLowerCase(Locale.ROOT);
@@ -187,11 +191,12 @@ public final class ShopScreen extends Screen {
             centered(g,(page+1)+"/"+Math.max(1,(visible.size()+14)/15),414,434,LIGHT);
             button(g,464,427,34,22,">",false,GOLD);
         } else if(tab.equals("Контракты")||tab.equals("Задания")){
-            text(g,"ЗАКАЗЫ ПРОИЗВОДСТВА",205,137,GOLD);
-            text(g,"Сдавайте ресурсы и получайте мастерки",205,153,0xFFD3BCA3);
+            text(g,tab.equals("Задания")?"ЕЖЕДНЕВНЫЕ ЗАДАНИЯ":"ЗАКАЗЫ ПРОИЗВОДСТВА",205,137,GOLD);
+            text(g,tab.equals("Задания")?"3 новых задания каждые реальные сутки":"Сдавайте ресурсы и получайте мастерки",205,153,0xFFD3BCA3);
+            List<MasterkiNetwork.Task> rows=tasksForTab();
             int start=page*8;
-            for(int i=0;i<8 && start+i<data.tasks().size();i++){
-                MasterkiNetwork.Task c=data.tasks().get(start+i);
+            for(int i=0;i<8 && start+i<rows.size();i++){
+                MasterkiNetwork.Task c=rows.get(start+i);
                 int yy=177+i*30;
                 g.fill(202,yy,623,yy+27,0xFF493020);
                 ItemStack icon=stack(c.item());if(!icon.isEmpty())g.renderItem(icon,207,yy+5);
@@ -284,8 +289,9 @@ public final class ShopScreen extends Screen {
         if(tab.equals("Настройки")&&x>=207&&x<598&&y>=174&&y<212){ClientEconomy.showHud=!ClientEconomy.showHud;return true;}
         if((tab.equals("Контракты")||tab.equals("Задания"))&&x>=544&&x<616&&y>=179&&y<=179+8*30){
             int index=page*8+(int)((y-179)/30);
-            if(index>=0&&index<data.tasks().size()){
-                PacketDistributor.sendToServer(new MasterkiNetwork.Action("contract",data.tasks().get(index).id(),1));
+            List<MasterkiNetwork.Task> rows=tasksForTab();
+            if(index>=0&&index<rows.size()){
+                PacketDistributor.sendToServer(new MasterkiNetwork.Action(tab.equals("Задания")?"daily":"contract",rows.get(index).id(),1));
                 return true;
             }
         }
@@ -309,7 +315,7 @@ public final class ShopScreen extends Screen {
         }
         if(x>=340&&x<505&&y>=427&&y<450){
             if(x<393)page=Math.max(0,page-1);else if(x>452)page++;
-            int count=tab.equals("Контракты")||tab.equals("Задания")?data.tasks().size():visible.size();
+            int count=tab.equals("Контракты")||tab.equals("Задания")?tasksForTab().size():visible.size();
             page=Math.min(page,Math.max(0,(count-1)/((tab.equals("Контракты")||tab.equals("Задания"))?8:15)));
             return true;
         }
