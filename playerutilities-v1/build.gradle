@@ -3,5 +3,5 @@ group='dev.masterki'
 version='1.0.0'
 base.archivesName='player-utilities-neoforge-1.21.1'
 java.toolchain.languageVersion=JavaLanguageVersion.of(21)
-neoForge { version='21.1.250' }
+neoForge { version='21.1.250'; runs { server { server(); programArgument '--nogui' } } }
 tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8' }
