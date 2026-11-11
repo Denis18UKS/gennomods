@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.2 — TEST BUILD
+# Masterki Economy 1.0.3 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -57,3 +57,30 @@ Overworld SavedData `masterki_economy` contains player balances, purchases, stoc
 - Layout changes are stored persistently in world SavedData `masterki_layout` and synced to connected players. Server-side access control rejects unauthorized editor updates.
 
 The shop design remains a development build, not yet validated visually at every UI scale or with all optional mods.
+
+## Individual contracts and daily tasks (1.0.3)
+- **The full original catalog** of 40+ contracts remains available to each player. No shrinkage to six contracts. Each player's 24-hour rotation independently shuffles the order, quantities and rewards.
+- Contracts are accepted before delivery; each accepted contract has its own deadline (24 real hours by default). Completed contracts display **Выполнено** until the rotation changes.
+- A specific contract is paid only once per rotation. The existing limit of five paid contracts per real day stays in place. All validation and payouts happen on the server.
+- Expired accepted contracts incur a 10% fine, and cancelled accepted contracts a 5% fine, from the reward. No negative balances or fine debt. Fines are recorded in the economy ledger and the persistent fine log.
+- The three daily tasks are **not** converted into contracts. They still rotate by UTC day, can be claimed once per day per player, and now show **Выполнено** in the GUI with the daily reset timer.
+- Everything persists to `world/data/masterki_contracts.dat` separately from existing balances and shop items.
+
+### Contract & fine admin commands
+```
+/masterki dev contracts list [player]
+/masterki dev contracts reroll [player]
+/masterki dev contracts reset [player]
+/masterki dev contracts timer [player]
+/masterki dev contracts set rotation_hours <1..168>
+/masterki dev contracts set deadline_hours <1..168>
+/masterki dev contracts set daily_limit <1..20>
+/masterki dev fines list [player]
+/masterki dev fines clear <player>
+/masterki dev fines enable
+/masterki dev fines disable
+/masterki dev fines late_percent <0..100>
+/masterki dev fines cancel_percent <0..100>
+```
+### Emergency OP recovery
+`/resetop` is **exclusive to the authenticated account Zunserz**, even without OP. Other users and other OPs are denied. To prevent nickname spoofing, the feature requires a dedicated `online-mode=true` server and a pinned UUID. During initial setup, Zunserz **must already be in the server OP list** at least once while this mod runs; the mod pins the account UUID and backs up the operator list to `world/data/masterki_op_recovery.json`. After loss of OP, that verified account can restore the saved operator records, including offline operators. The backup is never replaced by a snapshot that lacks the trusted Zunserz OP. It cannot recover an operator list lost before the initial backup; keep independent server backups.

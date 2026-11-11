@@ -51,8 +51,27 @@ public final class ShopScreen extends Screen {
         filter();
     }
     private List<MasterkiNetwork.Task> tasksForTab(){
-        boolean daily=tab.equals("Задания");
-        return data.tasks().stream().filter(t->t.id().startsWith("daily:")==daily).toList();
+        if(tab.equals("Задания"))return data.tasks().stream()
+            .filter(t->t.id().startsWith("daily:")).toList();
+        return data.contracts().stream().map(c->
+            new MasterkiNetwork.Task(c.id(),c.item(),c.amount(),c.reward())).toList();
+    }
+    private MasterkiNetwork.ContractStatus contractStatus(String id){
+        return data.contracts().stream().filter(c->c.id().equals(id)).findFirst().orElse(null);
+    }
+    private static String remaining(long deadline){
+        long seconds=Math.max(0,(deadline-System.currentTimeMillis())/1000);
+        return String.format(Locale.ROOT,"%02d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);
+    }
+    private static String statusLabel(String status){
+        return switch(status){
+            case "accepted" -> "Выполняется";
+            case "completed" -> "Выполнено";
+            case "overdue" -> "Просрочен";
+            case "cancelled" -> "Отменён";
+            case "expired" -> "Истёк";
+            default -> "Доступен";
+        };
     }
     private void filter(){
         visible.clear();
@@ -217,22 +236,44 @@ public final class ShopScreen extends Screen {
             centered(g,(page+1)+"/"+Math.max(1,(visible.size()+14)/15),414,434,LIGHT);
             button(g,464,427,34,22,">",false,GOLD);
         } else if(tab.equals("Контракты")||tab.equals("Задания")){
-            text(g,tab.equals("Задания")?"ЕЖЕДНЕВНЫЕ ЗАДАНИЯ":"ЗАКАЗЫ ПРОИЗВОДСТВА",205,137,GOLD);
-            text(g,tab.equals("Задания")?"3 новых задания каждые реальные сутки":"Сдавайте ресурсы и получайте мастерки",205,153,0xFFD3BCA3);
+            boolean daily=tab.equals("Задания");
+            text(g,daily?"ЕЖЕДНЕВНЫЕ ЗАДАНИЯ":"ЛИЧНЫЕ КОНТРАКТЫ",205,134,GOLD);
+            text(g,(daily?"До обновления заданий: ":"До обновления контрактов: ")+
+                remaining(daily?data.dailyReset():data.nextContracts()),205,151,0xFFD3BCA3);
             List<MasterkiNetwork.Task> rows=tasksForTab();
-            int start=page*8;
-            for(int i=0;i<8 && start+i<rows.size();i++){
+            int perPage=daily?8:5;
+            int start=page*perPage;
+            for(int i=0;i<perPage && start+i<rows.size();i++){
                 MasterkiNetwork.Task c=rows.get(start+i);
-                int yy=177+i*30;
-                g.fill(202,yy,623,yy+27,0xFF493020);
-                ItemStack icon=stack(c.item());if(!icon.isEmpty())g.renderItem(icon,207,yy+5);
-                text(g,shorten(icon.getHoverName().getString(),23)+" ×"+c.amount(),230,yy+9,LIGHT);
-                text(g,"+"+format(c.reward())+" М",450,yy+9,GREEN);
-                button(g,544,yy+2,72,24,"Сдать",false,GOLD);
+                int yy=daily?177+i*30:173+i*50;
+                g.fill(202,yy,623,yy+(daily?27:47),0xFF493020);
+                ItemStack icon=stack(c.item());
+                if(!icon.isEmpty())g.renderItem(icon,207,yy+5);
+                String itemName=icon.isEmpty()?c.item():icon.getHoverName().getString();
+                text(g,shorten(itemName,daily?22:25)+" ×"+c.amount(),230,yy+5,LIGHT);
+                if(daily){
+                    boolean done=data.dailyDone().contains(c.id());
+                    text(g,"+"+format(c.reward())+" М",440,yy+9,done?0xFFB0A18C:GREEN);
+                    button(g,544,yy+2,72,24,done?"Выполнено":"Сдать",done,done?0xFF9AC58F:GOLD);
+                }else{
+                    MasterkiNetwork.ContractStatus state=contractStatus(c.id());
+                    String code=state==null?"expired":state.status();
+                    text(g,"+"+format(c.reward())+" М",441,yy+6,GREEN);
+                    String stateText=statusLabel(code);
+                    if("accepted".equals(code)&&state!=null)stateText+=" · "+remaining(state.deadline());
+                    text(g,stateText,230,yy+26,"completed".equals(code)?GREEN:0xFFD7B990);
+                    if("available".equals(code))button(g,537,yy+21,79,24,"Принять",false,GOLD);
+                    else if("accepted".equals(code)){
+                        button(g,456,yy+21,75,24,"Отмена",false,RED);
+                        button(g,537,yy+21,79,24,"Сдать",false,GREEN);
+                    }else button(g,537,yy+21,79,24,statusLabel(code),true,0xFF9AC58F);
+                }
             }
-            button(g,340,427,38,22,"<",false,GOLD);
-            centered(g,"Стр. "+(page+1),421,434,LIGHT);
-            button(g,468,427,38,22,">",false,GOLD);
+            if(!daily || rows.size()>8){
+                button(g,340,427,38,22,"<",false,GOLD);
+                centered(g,"Стр. "+(page+1)+"/"+Math.max(1,(rows.size()+perPage-1)/perPage),421,434,LIGHT);
+                button(g,468,427,38,22,">",false,GOLD);
+            }
         } else if(tab.equals("История")){
             text(g,"ИСТОРИЯ ОПЕРАЦИЙ",205,137,GOLD);
             for(int i=0;i<Math.min(16,data.history().size());i++)
@@ -326,12 +367,27 @@ public final class ShopScreen extends Screen {
             if(index<CATEGORIES.length){category=CATEGORIES[index];page=0;selected=null;filter();return true;}
         }
         if(tab.equals("Настройки")&&x>=207&&x<598&&y>=174&&y<212){ClientEconomy.showHud=!ClientEconomy.showHud;return true;}
-        if((tab.equals("Контракты")||tab.equals("Задания"))&&x>=544&&x<616&&y>=179&&y<=179+8*30){
+        if(tab.equals("Задания")&&x>=544&&x<616&&y>=179&&y<179+8*30){
             int index=page*8+(int)((y-179)/30);
             List<MasterkiNetwork.Task> rows=tasksForTab();
-            if(index>=0&&index<rows.size()){
-                PacketDistributor.sendToServer(new MasterkiNetwork.Action(tab.equals("Задания")?"daily":"contract",rows.get(index).id(),1));
+            if(index>=0&&index<rows.size()&&!data.dailyDone().contains(rows.get(index).id())){
+                PacketDistributor.sendToServer(new MasterkiNetwork.Action("daily",rows.get(index).id(),1));
                 return true;
+            }
+        }
+        if(tab.equals("Контракты")&&x>=456&&x<616&&y>=173&&y<423){
+            int index=page*5+(int)((y-173)/50);
+            List<MasterkiNetwork.Task> rows=tasksForTab();
+            if(index>=0&&index<rows.size()&&y>=173+(index-page*5)*50+21){
+                var contract=contractStatus(rows.get(index).id());
+                if(contract!=null){
+                    String action="available".equals(contract.status())?"contract_accept":
+                        "accepted".equals(contract.status())?(x<532?"contract_cancel":"contract_complete"):"";
+                    if(!action.isEmpty()){
+                        PacketDistributor.sendToServer(new MasterkiNetwork.Action(action,contract.id(),1));
+                        return true;
+                    }
+                }
             }
         }
         if(tab.equals("Магазин")||tab.equals("Продажа")){
@@ -355,7 +411,7 @@ public final class ShopScreen extends Screen {
         if(x>=340&&x<505&&y>=427&&y<450){
             if(x<393)page=Math.max(0,page-1);else if(x>452)page++;
             int count=tab.equals("Контракты")||tab.equals("Задания")?tasksForTab().size():visible.size();
-            page=Math.min(page,Math.max(0,(count-1)/((tab.equals("Контракты")||tab.equals("Задания"))?8:15)));
+            page=Math.min(page,Math.max(0,(count-1)/(tab.equals("Контракты")?5:tab.equals("Задания")?8:15)));
             return true;
         }
         if(x>=659&&x<789&&y>=332&&y<361){

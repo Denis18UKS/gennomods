@@ -232,6 +232,8 @@ public final class Masterki {
         if(++tickCounter%1200!=0)return;
         Saved s=Saved.of(e.getServer().overworld());
         s.restockIfDue();
+        MasterkiContracts.of(e.getServer().overworld()).tick(System.currentTimeMillis(),e.getServer().overworld());
+        MasterkiOpRecovery.backupIfSafe(e.getServer());
     }
     private void joined(PlayerEvent.PlayerLoggedInEvent e){
         if(e.getEntity() instanceof ServerPlayer p) sync(p,false,"");
@@ -273,6 +275,8 @@ public final class Masterki {
                       .then(Commands.argument("amount",LongArgumentType.longArg(0))
                         .executes(c->adminMoney(c.getSource().getLevel(),EntityArgument.getPlayer(c,"player"),LongArgumentType.getLong(c,"amount"),true))))))));
         MasterkiLayout.register(d);
+        MasterkiContracts.register(d);
+        MasterkiOpRecovery.register(d);
     }
     private static int adminMoney(ServerLevel level,ServerPlayer p,long value,boolean set){
         Saved s=Saved.of(level);s.setBalance(p.getUUID(),set?value:Math.addExact(s.balance(p.getUUID()),value));
@@ -306,10 +310,17 @@ public final class Masterki {
         List<MasterkiNetwork.Product> products=new ArrayList<>();
         for(Offer offer:offers())products.add(new MasterkiNetwork.Product(offer.id,offer.category,offer.buy,offer.sell,data.stock(offer),offer.daily,offer.cap));
         List<MasterkiNetwork.Task> tasks=new ArrayList<>();
-        for(Contract c:contracts())tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
-        for(Contract c:dailyTasks())tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
+        long now=System.currentTimeMillis();
+        List<String> dailyDone=new ArrayList<>();
+        for(Contract c:dailyTasks()){
+            tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
+            if(!data.canCompleteDaily(p.getUUID(),now/DAY_MS,c.id()))dailyDone.add(c.id());
+        }
+        MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
-            products,tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries()));
+            products,tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
+            rotation.nextRotation(p.getUUID(),now),((now/DAY_MS)+1)*DAY_MS,
+            rotation.visible(p.getUUID(),now),dailyDone));
     }
     public static void action(ServerPlayer player,MasterkiNetwork.Action req){
         Saved data=Saved.of(player.serverLevel());
@@ -317,13 +328,17 @@ public final class Masterki {
         int qty=req.count();
         if(MasterkiLayout.editorAction(player,req.kind(),req.id(),req.count()))return;
         if("open".equals(req.kind())){sync(player,true,"");return;}
+        if(req.kind().startsWith("contract_")){
+            MasterkiContracts.of(player.serverLevel()).action(player,req.kind().substring(9),req.id());
+            sync(player,true,"contracts");return;
+        }
         if("top".equals(req.kind())){top(player);return;}
         if("help".equals(req.kind())){
             tell(player,"Команды: /shop, /money, /pay, /money top, /contracts",ChatFormatting.YELLOW);return;
         }
         if(qty<=0||qty>4096){tell(player,"Недопустимое количество.",ChatFormatting.RED);return;}
         if(player.getAbilities().instabuild &&
-           (req.kind().equals("sell")||req.kind().equals("daily")||req.kind().equals("contract"))){
+           (req.kind().equals("sell")||req.kind().equals("daily"))){
             tell(player,"В творческом режиме получать мастерки через магазин нельзя.",ChatFormatting.RED);
             return;
         }
@@ -348,21 +363,6 @@ public final class Masterki {
             data.log(player.getUUID(),"Ежедневное задание: +"+task.reward()+" М");
             tell(player,"Задание выполнено: +"+task.reward()+" М",ChatFormatting.GREEN);
             sync(player,true,"daily");return;
-        }
-        if("contract".equals(req.kind())){
-            Contract contract=contracts().stream().filter(c->c.id.equals(req.id())).findFirst().orElse(null);
-            if(contract==null){sync(player,true,"contracts");return;}
-            long day=System.currentTimeMillis()/DAY_MS;
-            if(data.contractsCompleted(player.getUUID(),day)>=5){tell(player,"Лимит контрактов на сегодня: 5.",ChatFormatting.RED);sync(player,true,"contracts");return;}
-            Item item=BuiltInRegistries.ITEM.get(ResourceLocation.parse(contract.item()));
-            if(item==Items.AIR||itemCount(player,new ItemStack(item))<contract.amount()){tell(player,"Не хватает ресурсов для контракта.",ChatFormatting.RED);sync(player,true,"contracts");return;}
-            if(data.balance(player.getUUID())>Long.MAX_VALUE-contract.reward()){sync(player,true,"contracts");return;}
-            take(player,new ItemStack(item),contract.amount());
-            data.setBalance(player.getUUID(),data.balance(player.getUUID())+contract.reward());
-            data.completeContract(player.getUUID(),day);
-            data.log(player.getUUID(),"Контракт: +"+contract.reward()+" М");
-            tell(player,"Контракт выполнен: +"+contract.reward()+" М",ChatFormatting.GREEN);
-            sync(player,true,"contracts");return;
         }
         if(offer==null){tell(player,"Товар отсутствует.",ChatFormatting.RED);sync(player,true,"");return;}
         Item item=BuiltInRegistries.ITEM.get(ResourceLocation.parse(offer.id));
