@@ -145,13 +145,28 @@ public final class Masterki {
             // Fill the remaining catalogue from actual loaded registry items. Never assume
             // that Create or another mod is installed.
             for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
-                if(out.size()>=200)break;
+                if(out.size()>=130)break;
                 String namespace=id.getNamespace();
-                if(!namespace.equals("minecraft")&&!namespace.equals("create"))continue;
+                if(!namespace.equals("minecraft"))continue;
                 String path=id.getPath();
                 if(banned(path))continue;
                 int price=namespace.equals("create")?70:Math.max(5,Math.abs(path.hashCode()%95)+8);
                 catalog(out,id.toString(),price,128,32);
+            }
+            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
+                if(out.size()>=165)break;
+                if(!id.getNamespace().equals("create")||banned(id.getPath()))continue;
+                catalog(out,id.toString(),70,128,32);
+            }
+            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
+                if(out.size()>=200)break;
+                String namespace=id.getNamespace();
+                if(namespace.equals("minecraft")||namespace.equals("create")||namespace.equals("masterki")||namespace.equals("neoforge")||banned(id.getPath()))continue;
+                catalog(out,id.toString(),120,64,16);
+            }
+            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
+                if(out.size()>=200)break;
+                if(id.getNamespace().equals("minecraft")&&!banned(id.getPath()))catalog(out,id.toString(),28,128,32);
             }
             offers=List.copyOf(out.values());
         }
@@ -162,16 +177,17 @@ public final class Masterki {
             ||p.contains("structure")||p.contains("jigsaw")||p.contains("debug")
             ||p.contains("air")||p.contains("light")||p.contains("bedrock")
             ||p.contains("knowledge_book")||p.contains("potion")
-            ||p.contains("shulker_box");
+            ||p.contains("shulker_box")||p.contains("creative")||p.contains("operator")||p.contains("debug_stick");
     }
     private static void catalog(Map<String,Offer> out,String id,int price,int cap,int refill){
         ResourceLocation key=ResourceLocation.tryParse(id);
         if(key==null||!BuiltInRegistries.ITEM.containsKey(key))return;
         Item item=BuiltInRegistries.ITEM.get(key);
-        if(item==Items.AIR||!new ItemStack(item).isEmpty()==false)return;
+        if(item==Items.AIR||new ItemStack(item).isEmpty())return;
         String type;
         String p=key.getPath();
         if(key.getNamespace().equals("create"))type="Create";
+        else if(!key.getNamespace().equals("minecraft"))type="Другие моды";
         else if(p.contains("sword")||p.contains("pickaxe")||p.contains("axe")||p.contains("bow")||p.contains("shield"))type="Инструменты";
         else if(p.contains("cooked")||p.contains("bread")||p.contains("seed")||p.contains("wheat")||p.contains("carrot")||p.contains("apple")||p.contains("potato"))type="Еда и фермы";
         else if(p.contains("log")||p.contains("plank")||p.contains("stone")||p.contains("glass")||p.contains("brick")||p.contains("door"))type="Строительство";
@@ -267,6 +283,10 @@ public final class Masterki {
         Saved data=Saved.of(player.serverLevel());
         data.restockIfDue();
         int qty=req.count();
+        if("top".equals(req.kind())){top(player);return;}
+        if("help".equals(req.kind())){
+            tell(player,"Команды: /shop, /money, /money pay, /money top, /contracts",ChatFormatting.YELLOW);return;
+        }
         if(qty<=0||qty>4096){tell(player,"Недопустимое количество.",ChatFormatting.RED);return;}
         Offer offer=offers().stream().filter(o->o.id.equals(req.id())).findFirst().orElse(null);
         if("contract".equals(req.kind())){
@@ -306,9 +326,11 @@ public final class Masterki {
         } else if("sell".equals(req.kind())){
             if(player.getAbilities().instabuild){tell(player,"Продажа в творческом режиме отключена.",ChatFormatting.RED);sync(player,true,"");return;}
             if(itemCount(player,template)<qty){tell(player,"Недостаточно предметов без дополнительных компонентов.",ChatFormatting.RED);sync(player,true,"");return;}
+            if(!data.canSell(offer,qty)){tell(player,"Дневной лимит выкупа этого товара исчерпан.",ChatFormatting.RED);sync(player,true,"");return;}
             long earned=safeMultiply(offer.sell,qty);
             if(data.balance(player.getUUID())>Long.MAX_VALUE-earned){sync(player,true,"");return;}
             take(player,template,qty);
+            data.countSell(offer,qty);
             data.setBalance(player.getUUID(),data.balance(player.getUUID())+earned);
             data.adjustStock(offer,qty);
             data.log(player.getUUID(),"Продажа "+offer.id+" x"+qty+" (+"+earned+" М)");
@@ -326,7 +348,7 @@ public final class Masterki {
     }
     private static int room(ServerPlayer player,ItemStack template){
         int capacity=0,max=template.getMaxStackSize();
-        for(int i=0;i<player.getInventory().getContainerSize();i++){
+        for(int i=0;i<36;i++){
             ItemStack stack=player.getInventory().getItem(i);
             if(stack.isEmpty())capacity+=max;
             else if(ItemStack.isSameItemSameComponents(stack,template))
@@ -362,6 +384,8 @@ public final class Masterki {
         final Map<UUID,List<String>> history=new HashMap<>();
         final Map<UUID,Integer> tasksCount=new HashMap<>();
         final Map<UUID,Long> taskDay=new HashMap<>();
+        final Map<String,Integer> soldToday=new HashMap<>();
+        long buybackDay=System.currentTimeMillis()/DAY_MS;
         long nextRestock=System.currentTimeMillis()+DAY_MS;
         static Saved of(ServerLevel level){
             return level.getServer().overworld().getDataStorage()
@@ -395,6 +419,19 @@ public final class Masterki {
             nextRestock=System.currentTimeMillis()+DAY_MS;
             setDirty();
         }
+        private void updateBuybackDay(){
+            long today=System.currentTimeMillis()/DAY_MS;
+            if(buybackDay!=today){buybackDay=today;soldToday.clear();setDirty();}
+        }
+        boolean canSell(Offer offer,int qty){
+            updateBuybackDay();
+            int cap=offer.daily()>0?offer.daily()*2:8;
+            return (long)soldToday.getOrDefault(offer.id(),0)+qty<=cap;
+        }
+        void countSell(Offer offer,int qty){
+            updateBuybackDay();
+            soldToday.merge(offer.id(),qty,Integer::sum);setDirty();
+        }
         int contractsCompleted(UUID id,long today){
             return taskDay.getOrDefault(id,-1L)==today?tasksCount.getOrDefault(id,0):0;
         }
@@ -404,6 +441,10 @@ public final class Masterki {
         }
         @Override public CompoundTag save(CompoundTag tag,HolderLookup.Provider registries){
             tag.putLong("NextRestock",nextRestock);
+            tag.putLong("BuybackDay",buybackDay);
+            CompoundTag buybacks=new CompoundTag();
+            soldToday.forEach(buybacks::putInt);
+            tag.put("Buybacks",buybacks);
             ListTag users=new ListTag();
             for(var e:balances.entrySet()){
                 CompoundTag u=new CompoundTag();u.putUUID("UUID",e.getKey());u.putLong("Balance",e.getValue());
@@ -420,6 +461,9 @@ public final class Masterki {
         static Saved load(CompoundTag tag,HolderLookup.Provider registries){
             Saved saved=new Saved();
             saved.nextRestock=tag.getLong("NextRestock");
+            saved.buybackDay=tag.getLong("BuybackDay");
+            CompoundTag savedBuybacks=tag.getCompound("Buybacks");
+            for(String id:savedBuybacks.getAllKeys())saved.soldToday.put(id,savedBuybacks.getInt(id));
             if(saved.nextRestock==0)saved.nextRestock=System.currentTimeMillis()+DAY_MS;
             ListTag users=tag.getList("Users",Tag.TAG_COMPOUND);
             for(int i=0;i<users.size();i++){
