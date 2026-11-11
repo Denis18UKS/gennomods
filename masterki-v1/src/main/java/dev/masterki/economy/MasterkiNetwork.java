@@ -24,6 +24,33 @@ public final class MasterkiNetwork {
             buf->new Action(buf.readUtf(24),buf.readUtf(128),buf.readVarInt()));
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
+    /** Chunked full-catalog transport: avoids oversized payloads on large modpacks. */
+    public record CatalogChunk(boolean reset,boolean last,List<Product> products)
+        implements CustomPacketPayload {
+        public static final Type<CatalogChunk> TYPE=new Type<>(
+            ResourceLocation.fromNamespaceAndPath("masterki","catalog_chunk"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,CatalogChunk> CODEC=StreamCodec.of(
+            (buf,p)->{
+                buf.writeBoolean(p.reset());buf.writeBoolean(p.last());
+                buf.writeVarInt(p.products().size());
+                for(Product o:p.products()){
+                    buf.writeUtf(o.id(),128);buf.writeUtf(o.category(),48);
+                    buf.writeLong(o.buy());buf.writeLong(o.sell());
+                    buf.writeVarInt(o.stock());buf.writeVarInt(o.daily());buf.writeVarInt(o.cap());
+                }
+            },
+            buf->{
+                boolean reset=buf.readBoolean(),last=buf.readBoolean();
+                int n=buf.readVarInt();
+                if(n<0||n>128)throw new IllegalArgumentException("Bad Masterki catalog chunk size "+n);
+                List<Product> products=new ArrayList<>(n);
+                for(int i=0;i<n;i++)products.add(new Product(buf.readUtf(128),buf.readUtf(48),
+                    buf.readLong(),buf.readLong(),buf.readVarInt(),buf.readVarInt(),buf.readVarInt()));
+                return new CatalogChunk(reset,last,products);
+            });
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+
     public record Snapshot(boolean open,String tab,long balance,long nextRestock,
                            List<Product> products,List<Task> tasks,List<String> history,List<LayoutEntry> layout,
                            long nextContracts,long dailyReset,List<ContractStatus> contracts,List<String> dailyDone)
@@ -89,5 +116,7 @@ public final class MasterkiNetwork {
         }));
         registrar.playToClient(Snapshot.TYPE,Snapshot.CODEC,(packet,context)->
             context.enqueueWork(()->dev.masterki.economy.client.ClientEconomy.receive(packet)));
+        registrar.playToClient(CatalogChunk.TYPE,CatalogChunk.CODEC,(packet,context)->
+            context.enqueueWork(()->dev.masterki.economy.client.ClientEconomy.receiveCatalog(packet)));
     }
 }

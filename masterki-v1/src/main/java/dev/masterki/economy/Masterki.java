@@ -55,6 +55,7 @@ public final class Masterki {
 
     public static List<Offer> offers() {
         if(offers==null) {
+            MasterkiCatalogPolicy.reload();
             LinkedHashMap<String,Offer> out=new LinkedHashMap<>();
             // Curated staples, with server-side default prices and stock.
             catalog(out,"minecraft:iron_ingot",18,512,256);
@@ -142,46 +143,25 @@ public final class Masterki {
             catalog(out,"create:brass_funnel",420,48,24);
             catalog(out,"create:brass_tunnel",650,48,24);
             catalog(out,"create:track",150,256,128);
-            // Fill the remaining catalogue from actual loaded registry items. Never assume
-            // that Create or another mod is installed.
-            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
-                if(out.size()>=130)break;
-                String namespace=id.getNamespace();
-                if(!namespace.equals("minecraft"))continue;
-                String path=id.getPath();
-                if(banned(path))continue;
-                int price=namespace.equals("create")?70:Math.max(5,Math.abs(path.hashCode()%95)+8);
-                catalog(out,id.toString(),price,128,32);
-            }
-            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
-                if(out.size()>=165)break;
-                if(!id.getNamespace().equals("create")||banned(id.getPath()))continue;
-                catalog(out,id.toString(),70,128,32);
-            }
-            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
-                if(out.size()>=200)break;
-                String namespace=id.getNamespace();
-                if(namespace.equals("minecraft")||namespace.equals("create")||namespace.equals("masterki")||namespace.equals("neoforge")||banned(id.getPath()))continue;
-                catalog(out,id.toString(),120,64,16);
-            }
-            for(ResourceLocation id:BuiltInRegistries.ITEM.keySet()){
-                if(out.size()>=200)break;
-                if(id.getNamespace().equals("minecraft")&&!banned(id.getPath()))catalog(out,id.toString(),28,128,32);
+            // Unlimited catalogue: automatically include allowed items from ALL loaded mods.
+            // Deterministic ordering prevents previous item IDs from changing between restarts.
+            List<ResourceLocation> registered=new ArrayList<>(BuiltInRegistries.ITEM.keySet());
+            registered.sort(Comparator.comparing(ResourceLocation::toString));
+            for(ResourceLocation id:registered) {
+                if(out.containsKey(id.toString())||!MasterkiCatalogPolicy.allowed(id))continue;
+                Item item=BuiltInRegistries.ITEM.get(id);
+                int price=MasterkiCatalogPolicy.approximateBuy(id,item);
+                int stock=price>=1500?8:price>=500?24:price>=150?64:price>=50?128:512;
+                int daily=Math.max(1,stock/2);
+                catalog(out,id.toString(),price,stock,daily);
             }
             offers=MasterkiConfig.loadOrCreate(List.copyOf(out.values()));
         }
         return offers;
     }
-    private static boolean banned(String p){
-        return p.contains("spawn_egg")||p.contains("command_block")||p.contains("barrier")
-            ||p.contains("structure")||p.contains("jigsaw")||p.contains("debug")
-            ||p.contains("air")||p.contains("light")||p.contains("bedrock")
-            ||p.contains("knowledge_book")||p.contains("potion")
-            ||p.contains("shulker_box")||p.contains("creative")||p.contains("operator")||p.contains("debug_stick");
-    }
     private static void catalog(Map<String,Offer> out,String id,int price,int cap,int refill){
         ResourceLocation key=ResourceLocation.tryParse(id);
-        if(key==null||!BuiltInRegistries.ITEM.containsKey(key))return;
+        if(!MasterkiCatalogPolicy.allowed(key))return;
         Item item=BuiltInRegistries.ITEM.get(key);
         if(item==Items.AIR||new ItemStack(item).isEmpty())return;
         String type;
@@ -307,8 +287,6 @@ public final class Masterki {
     public static void sync(ServerPlayer p,boolean open,String page){
         Saved data=Saved.of(p.serverLevel());
         data.restockIfDue();
-        List<MasterkiNetwork.Product> products=new ArrayList<>();
-        for(Offer offer:offers())products.add(new MasterkiNetwork.Product(offer.id,offer.category,offer.buy,offer.sell,data.stock(offer),offer.daily,offer.cap));
         List<MasterkiNetwork.Task> tasks=new ArrayList<>();
         long now=System.currentTimeMillis();
         List<String> dailyDone=new ArrayList<>();
@@ -318,9 +296,30 @@ public final class Masterki {
         }
         MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
-            products,tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
+            List.of(),tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
             rotation.nextRotation(p.getUUID(),now),((now/DAY_MS)+1)*DAY_MS,
             rotation.visible(p.getUUID(),now),dailyDone));
+        if(open)sendCatalog(p,data);
+    }
+
+    private static void sendCatalog(ServerPlayer player,Saved data){
+        // 96 entries per packet, with the final packet committing the rebuilt list.
+        List<Offer> all=offers();
+        if(all.isEmpty()){
+            PacketDistributor.sendToPlayer(player,new MasterkiNetwork.CatalogChunk(true,true,List.of()));
+            return;
+        }
+        for(int start=0;start<all.size();start+=96){
+            int end=Math.min(start+96,all.size());
+            List<MasterkiNetwork.Product> slice=new ArrayList<>(end-start);
+            for(int i=start;i<end;i++){
+                Offer o=all.get(i);
+                slice.add(new MasterkiNetwork.Product(o.id,o.category,o.buy,o.sell,
+                    data.stock(o),o.daily,o.cap));
+            }
+            PacketDistributor.sendToPlayer(player,
+                new MasterkiNetwork.CatalogChunk(start==0,end==all.size(),slice));
+        }
     }
     public static void action(ServerPlayer player,MasterkiNetwork.Action req){
         Saved data=Saved.of(player.serverLevel());

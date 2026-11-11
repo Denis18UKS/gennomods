@@ -19,18 +19,39 @@ public final class ClientEconomy {
     private static long balance=0;
     private static long changedAt=0;
     private static boolean received=false;
+    private static MasterkiNetwork.Snapshot latest;
+    private static final java.util.List<MasterkiNetwork.Product> catalog=new java.util.ArrayList<>();
     private ClientEconomy(){}
+
+    private static MasterkiNetwork.Snapshot withProducts(MasterkiNetwork.Snapshot snapshot){
+        return new MasterkiNetwork.Snapshot(snapshot.open(),snapshot.tab(),snapshot.balance(),
+            snapshot.nextRestock(),java.util.List.copyOf(catalog),snapshot.tasks(),
+            snapshot.history(),snapshot.layout(),snapshot.nextContracts(),snapshot.dailyReset(),
+            snapshot.contracts(),snapshot.dailyDone());
+    }
 
     public static void receive(MasterkiNetwork.Snapshot snapshot){
         Minecraft mc=Minecraft.getInstance();
         if(received&&balance!=snapshot.balance())changedAt=System.currentTimeMillis();
         received=true;
         balance=snapshot.balance();
+        latest=snapshot;
         ClientLayout.receive(snapshot.layout());
-        if(mc.screen instanceof ShopScreen screen)screen.snapshot(snapshot);
+        if(!snapshot.open()&&mc.screen==null)catalog.clear();
+        if(snapshot.open()&&!(mc.screen instanceof ShopScreen))catalog.clear();
+        if(mc.screen instanceof ShopScreen screen)screen.snapshot(withProducts(snapshot));
         else if(snapshot.open()&&"layout_editor".equals(snapshot.tab()))
             mc.setScreen(new LayoutEditorScreen());
-        else if(snapshot.open())mc.setScreen(new ShopScreen(snapshot,snapshot.tab()));
+        else if(snapshot.open())mc.setScreen(new ShopScreen(withProducts(snapshot),snapshot.tab()));
+    }
+
+    public static void receiveCatalog(MasterkiNetwork.CatalogChunk packet){
+        if(packet.reset())catalog.clear();
+        catalog.addAll(packet.products());
+        if(packet.last()&&latest!=null){
+            Minecraft mc=Minecraft.getInstance();
+            if(mc.screen instanceof ShopScreen screen)screen.snapshot(withProducts(latest));
+        }
     }
 
     private static String format(){return String.format(java.util.Locale.ROOT,"%,d М",balance).replace(',',' ');}

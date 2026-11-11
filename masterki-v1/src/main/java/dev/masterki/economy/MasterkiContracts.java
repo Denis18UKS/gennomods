@@ -83,6 +83,8 @@ public final class MasterkiContracts extends SavedData {
     }
     private Board board(UUID uuid,long now){
         Board b=boards.computeIfAbsent(uuid,k->new Board());
+        // Remove previously saved creative/developer-only contracts from older versions.
+        if(b.entries.removeIf(c->!MasterkiCatalogPolicy.allowed(c.item)))setDirty();
         if(b.nextRefresh==0 || now>=b.nextRefresh){
             rotate(uuid,b,now);
         }
@@ -109,8 +111,7 @@ public final class MasterkiContracts extends SavedData {
         List<Masterki.Contract> pool=new ArrayList<>(Masterki.contracts());
         pool.removeIf(c->{
             ResourceLocation id=ResourceLocation.tryParse(c.item());
-            return id==null || !BuiltInRegistries.ITEM.containsKey(id)
-                || BuiltInRegistries.ITEM.get(id)==Items.AIR;
+            return !MasterkiCatalogPolicy.allowed(id);
         });
         Collections.shuffle(pool,ThreadLocalRandom.current());
         // Keep 40 visible contracts, as in v1.0.2, but rotate them from an
