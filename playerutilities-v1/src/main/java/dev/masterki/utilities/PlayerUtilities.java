@@ -37,6 +37,7 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 @Mod("playerutilities")
 public final class PlayerUtilities {
     private static final Map<UUID, Request> REQUESTS = new HashMap<>();
+    private static final Map<UUID, Long> COOLDOWNS = new HashMap<>();
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss");
     private record Request(UUID sender, long expiresAt) {}
 
@@ -77,6 +78,11 @@ public final class PlayerUtilities {
 
     private static int request(ServerPlayer from, ServerPlayer to) {
         if (from.getUUID().equals(to.getUUID())) { send(from,"Нельзя отправить запрос самому себе.",ChatFormatting.RED);return 0; }
+        long now=System.currentTimeMillis();
+        if (COOLDOWNS.getOrDefault(from.getUUID(),0L)>now){send(from,"Подожди 5 секунд перед следующим запросом.",ChatFormatting.YELLOW);return 0;}
+        COOLDOWNS.put(from.getUUID(),now+5000);
+        Request existing=REQUESTS.get(to.getUUID());
+        if(existing!=null&&existing.expiresAt>now){send(from,"У этого игрока уже есть ожидающий запрос.",ChatFormatting.YELLOW);return 0;}
         REQUESTS.put(to.getUUID(), new Request(from.getUUID(), System.currentTimeMillis()+60_000));
         send(from,"Запрос телепортации отправлен игроку "+to.getGameProfile().getName()+".",ChatFormatting.YELLOW);
         to.sendSystemMessage(Component.literal(from.getGameProfile().getName()+" хочет телепортироваться к вам. ")
@@ -136,7 +142,9 @@ public final class PlayerUtilities {
         String loc=death.pos.getX()+", "+death.pos.getY()+", "+death.pos.getZ();
         p.sendSystemMessage(Component.literal("#"+number+"  "+date+"  "+death.dimension+"  ")
             .withStyle(ChatFormatting.WHITE)
-            .append(button("["+loc+"]", "/death last",ChatFormatting.AQUA))
+            .append(Component.literal("["+loc+"]").withStyle(style -> style.withColor(ChatFormatting.AQUA)
+                .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,loc))
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,Component.literal("Скопировать координаты")))))
             .append(Component.literal(" | "+death.reason).withStyle(ChatFormatting.GRAY)));
     }
     private static int remove(ServerPlayer p,int n) {
