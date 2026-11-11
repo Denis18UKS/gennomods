@@ -285,7 +285,7 @@ public final class ShopScreen extends Screen {
             return true;
         }
         if(x>=660&&x<880&&y>=367&&y<391){
-            int index=(int)((x-660)/54),[]values={16,32,64,256};
+            int index=(int)((x-660)/54); int[] values={16,32,64,256};
             if(index>=0&&index<4)qty=values[index];
             return true;
         }
