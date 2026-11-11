@@ -66,6 +66,6 @@ public final class MasterkiNetwork {
             if(context.player() instanceof ServerPlayer player)Masterki.action(player,packet);
         }));
         registrar.playToClient(Snapshot.TYPE,Snapshot.CODEC,(packet,context)->
-            context.enqueueWork(()->dev.masterki.economy.client.MasterkiClient.receive(packet)));
+            context.enqueueWork(()->dev.masterki.economy.client.ClientEconomy.receive(packet)));
     }
 }
