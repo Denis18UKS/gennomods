@@ -319,6 +319,11 @@ public final class Masterki {
             tell(player,"Команды: /shop, /money, /money pay, /money top, /contracts",ChatFormatting.YELLOW);return;
         }
         if(qty<=0||qty>4096){tell(player,"Недопустимое количество.",ChatFormatting.RED);return;}
+        if(player.getAbilities().instabuild &&
+           (req.kind().equals("sell")||req.kind().equals("daily")||req.kind().equals("contract"))){
+            tell(player,"В творческом режиме получать мастерки через магазин нельзя.",ChatFormatting.RED);
+            return;
+        }
         Offer offer=offers().stream().filter(o->o.id.equals(req.id())).findFirst().orElse(null);
         if("daily".equals(req.kind())){
             Contract task=dailyTasks().stream().filter(c->c.id().equals(req.id())).findFirst().orElse(null);
@@ -410,7 +415,7 @@ public final class Masterki {
     }
     private static int itemCount(ServerPlayer player,ItemStack template){
         int count=0;
-        for(int i=0;i<player.getInventory().getContainerSize();i++){
+        for(int i=0;i<36;i++){
             ItemStack stack=player.getInventory().getItem(i);
             if(ItemStack.isSameItemSameComponents(stack,template))count+=stack.getCount();
         }
@@ -418,7 +423,7 @@ public final class Masterki {
     }
     private static void take(ServerPlayer player,ItemStack template,int qty){
         int left=qty;
-        for(int i=0;i<player.getInventory().getContainerSize()&&left>0;i++){
+        for(int i=0;i<36&&left>0;i++){
             ItemStack stack=player.getInventory().getItem(i);
             if(!ItemStack.isSameItemSameComponents(stack,template))continue;
             int sub=Math.min(stack.getCount(),left);
