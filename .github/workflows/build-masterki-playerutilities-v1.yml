@@ -38,7 +38,7 @@ jobs:
 
       - name: Package full project sources
         run: |
-          git archive --format=zip --output=/tmp/${{ matrix.project }}-sources.zip HEAD ${{ matrix.project }}
+          git archive --format=zip --output=/tmp/${{ matrix.project }}-sources.zip HEAD ${{ matrix.project }} .github/workflows/build-masterki-playerutilities-v1.yml
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-sources
