@@ -8,3 +8,14 @@ base.archivesName='masterki-economy-neoforge-1.21.1'
 java.toolchain.languageVersion=JavaLanguageVersion.of(21)
 neoForge { version='21.1.250' }
 tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8' }
+
+tasks.named('processResources') {
+    doFirst {
+        def input = file('coin.png.base64')
+        def output = file('src/main/resources/assets/masterki/textures/gui/coin.png')
+        if(input.exists()) {
+            output.parentFile.mkdirs()
+            output.bytes = java.util.Base64.getDecoder().decode(input.text.trim())
+        }
+    }
+}
