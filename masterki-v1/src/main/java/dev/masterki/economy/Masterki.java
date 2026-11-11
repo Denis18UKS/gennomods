@@ -168,7 +168,7 @@ public final class Masterki {
                 if(out.size()>=200)break;
                 if(id.getNamespace().equals("minecraft")&&!banned(id.getPath()))catalog(out,id.toString(),28,128,32);
             }
-            offers=List.copyOf(out.values());
+            offers=MasterkiConfig.loadOrCreate(List.copyOf(out.values()));
         }
         return offers;
     }
@@ -232,6 +232,12 @@ public final class Masterki {
             .then(Commands.literal("restock").executes(c->{
                 Saved.of(c.getSource().getLevel()).restockNow();
                 c.getSource().sendSuccess(()->Component.literal("Masterki: поставка выполнена"),false);return 1;
+            }))
+            .then(Commands.literal("reload").executes(c->{
+                offers=null;
+                int size=offers().size();
+                c.getSource().sendSuccess(()->Component.literal("Masterki: загружено "+size+" товаров"),false);
+                return 1;
             }))
             .then(Commands.literal("money")
                 .then(Commands.literal("add")
