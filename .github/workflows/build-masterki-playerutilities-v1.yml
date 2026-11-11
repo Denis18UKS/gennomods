@@ -7,6 +7,8 @@ on:
       - 'playerutilities-v1/**'
       - '.github/workflows/build-masterki-playerutilities-v1.yml'
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -43,3 +45,22 @@ jobs:
         with:
           name: ${{ matrix.project }}-sources
           path: /tmp/${{ matrix.project }}-sources.zip
+
+      - name: Publish verified Masterki JAR to dist
+        if: matrix.project == 'masterki-v1'
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n "s/^version='\\([^']*\\)'/\\1/p" masterki-v1/build.gradle)
+          test -n "$VERSION"
+          ARTIFACT=$(find masterki-v1/build/libs -maxdepth 1 -name '*.jar' -type f | head -n 1)
+          test -f "$ARTIFACT"
+          mkdir -p dist
+          TARGET="dist/Masterki-Economy-${VERSION}-NeoForge-1.21.1.jar"
+          cp "$ARTIFACT" "$TARGET"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$TARGET"
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish Masterki Economy ${VERSION} jar [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
