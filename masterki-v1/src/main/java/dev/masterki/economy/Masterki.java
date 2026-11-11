@@ -390,6 +390,9 @@ public final class Masterki {
         final Map<UUID,List<String>> history=new HashMap<>();
         final Map<UUID,Integer> tasksCount=new HashMap<>();
         final Map<UUID,Long> taskDay=new HashMap<>();
+        final Map<UUID,java.util.Set<String>> discoveries=new HashMap<>();
+        final Map<UUID,Integer> huntedToday=new HashMap<>();
+        final Map<UUID,Long> huntDay=new HashMap<>();
         final Map<String,Integer> soldToday=new HashMap<>();
         long buybackDay=System.currentTimeMillis()/DAY_MS;
         long nextRestock=System.currentTimeMillis()+DAY_MS;
@@ -412,6 +415,22 @@ public final class Masterki {
             logs.add(0,line);
             if(logs.size()>50)logs.remove(logs.size()-1);
             setDirty();
+        }
+        boolean firstDiscovery(UUID uuid,String identity){
+            boolean first=discoveries.computeIfAbsent(uuid,k->new java.util.HashSet<>()).add(identity);
+            if(first)setDirty();
+            return first;
+        }
+        boolean recordHunt(UUID uuid,long today){
+            if(huntDay.getOrDefault(uuid,-1L)!=today){
+                huntDay.put(uuid,today);
+                huntedToday.put(uuid,0);
+            }
+            int count=huntedToday.getOrDefault(uuid,0);
+            if(count>=12)return false;
+            huntedToday.put(uuid,count+1);
+            setDirty();
+            return true;
         }
         void restockIfDue(){
             if(System.currentTimeMillis()<nextRestock)return;
@@ -456,6 +475,13 @@ public final class Masterki {
                 CompoundTag u=new CompoundTag();u.putUUID("UUID",e.getKey());u.putLong("Balance",e.getValue());
                 u.putInt("Tasks",tasksCount.getOrDefault(e.getKey(),0));
                 u.putLong("TaskDay",taskDay.getOrDefault(e.getKey(),-1L));
+                u.putInt("Hunts",huntedToday.getOrDefault(e.getKey(),0));
+                u.putLong("HuntDay",huntDay.getOrDefault(e.getKey(),-1L));
+                ListTag found=new ListTag();
+                for(String entry:discoveries.getOrDefault(e.getKey(),java.util.Set.of())){
+                    CompoundTag item=new CompoundTag();item.putString("ID",entry);found.add(item);
+                }
+                u.put("Discoveries",found);
                 ListTag lines=new ListTag();
                 for(String line:logs(e.getKey())){CompoundTag l=new CompoundTag();l.putString("Text",line);lines.add(l);}
                 u.put("History",lines);users.add(u);
@@ -479,6 +505,12 @@ public final class Masterki {
                 saved.balances.put(uuid,u.getLong("Balance"));
                 saved.tasksCount.put(uuid,u.getInt("Tasks"));
                 saved.taskDay.put(uuid,u.getLong("TaskDay"));
+                saved.huntedToday.put(uuid,u.getInt("Hunts"));
+                saved.huntDay.put(uuid,u.getLong("HuntDay"));
+                ListTag found=u.getList("Discoveries",Tag.TAG_COMPOUND);
+                java.util.Set<String> discovered=new java.util.HashSet<>();
+                for(int k=0;k<found.size();k++)discovered.add(found.getCompound(k).getString("ID"));
+                saved.discoveries.put(uuid,discovered);
                 List<String> logs=new ArrayList<>();
                 ListTag lines=u.getList("History",Tag.TAG_COMPOUND);
                 for(int n=0;n<lines.size();n++)logs.add(lines.getCompound(n).getString("Text"));
