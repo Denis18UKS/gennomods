@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.1 — TEST BUILD
+# Masterki Economy 1.0.2 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -6,7 +6,7 @@ NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client 
 
 - Full custom `ShopScreen` (not a chest or chat UI), brass/copper Create-inspired layout based on the user-supplied screenshot; M coin PNG from the approved GUI reference
 - Currency **мастерки (М)**, initial 300 М account; UUID-based persistent balances
-- Balance widget centered beneath the vanilla inventory, away from JEI, optional temporary main-HUD indicator
+- Balance widget below the vanilla inventory (adjusted left and fully scalable), away from JEI, optional temporary main-HUD indicator
 - Separate shop/sell/categories, search, filters, price sorting, favorites, item details, quantity choices and confirmation via server-side transaction
 - Items from vanilla, optional Create, other loaded mods, editable `config/masterki/products.json`
 - Server-validated purchases, sales, bulk discounts, bounded stock, per-day buyback caps, payment history
@@ -20,7 +20,7 @@ NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client 
 
 ## Commands
 
-`/shop`, `/shop history`, `/money`, `/money pay <player> <amount>`,
+`/shop`, `/shop history`, `/money`, `/pay <player> <amount>`,
 `/money top`, `/contracts`.
 
 Admin (OP level 2): `/masterki admin restock`, `/masterki admin reload`,
@@ -45,3 +45,15 @@ The included GitHub Actions workflows build the project and start a disposable N
 ## Storage
 
 Overworld SavedData `masterki_economy` contains player balances, purchases, stock, earned advancements/explorations, daily hunt/quest limits, and resupply clock. No database or external service is required.
+
+
+## HUD, keybind and administrator layout
+
+- Open `/shop` with the rebindable **M** key or `/shop` command.
+- The compact in-game HUD is visible by default; toggle it in shop settings.
+- The 64×64 currency texture is scaled fully instead of cropping the top-left corner.
+- UI buttons play the standard Minecraft click sound. The shop uses a real rotating Create cogwheel where available.
+- OPs may run `/masterki dev edit` for a draggable layout editor, or `/masterki dev layout`, `/masterki dev move <id> <dx> <dy>`, `/masterki dev setpos <id> <x> <y>`, `/masterki dev scale <id> <factor>`, `/masterki dev show <id>`, `/masterki dev hide <id>`, `/masterki dev reset <id|all>`, `/masterki dev save`.
+- Layout changes are stored persistently in world SavedData `masterki_layout` and synced to connected players. Server-side access control rejects unauthorized editor updates.
+
+The shop design remains a development build, not yet validated visually at every UI scale or with all optional mods.

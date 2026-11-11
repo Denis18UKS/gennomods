@@ -245,12 +245,12 @@ public final class Masterki {
         d.register(Commands.literal("contracts").executes(c -> { sync(c.getSource().getPlayerOrException(),true,"contracts");return 1;}));
         d.register(Commands.literal("money")
             .executes(c -> {ServerPlayer p=c.getSource().getPlayerOrException();tell(p,"Баланс: "+Saved.of(p.serverLevel()).balance(p.getUUID())+" М",ChatFormatting.GOLD);return 1;})
-            .then(Commands.literal("pay")
-                .then(Commands.argument("player",EntityArgument.player())
-                    .then(Commands.argument("amount",LongArgumentType.longArg(1))
-                        .executes(c -> pay(c.getSource().getPlayerOrException(),
-                                EntityArgument.getPlayer(c,"player"),LongArgumentType.getLong(c,"amount"))))))
             .then(Commands.literal("top").executes(c -> top(c.getSource().getPlayerOrException()))));
+        d.register(Commands.literal("pay")
+            .then(Commands.argument("player",EntityArgument.player())
+                .then(Commands.argument("amount",LongArgumentType.longArg(1))
+                    .executes(c -> pay(c.getSource().getPlayerOrException(),
+                        EntityArgument.getPlayer(c,"player"),LongArgumentType.getLong(c,"amount"))))));
         d.register(Commands.literal("masterki")
           .then(Commands.literal("admin").requires(s -> s.hasPermission(2))
             .then(Commands.literal("restock").executes(c->{
@@ -272,13 +272,14 @@ public final class Masterki {
                     .then(Commands.argument("player",EntityArgument.player())
                       .then(Commands.argument("amount",LongArgumentType.longArg(0))
                         .executes(c->adminMoney(c.getSource().getLevel(),EntityArgument.getPlayer(c,"player"),LongArgumentType.getLong(c,"amount"),true))))))));
+        MasterkiLayout.register(d);
     }
     private static int adminMoney(ServerLevel level,ServerPlayer p,long value,boolean set){
         Saved s=Saved.of(level);s.setBalance(p.getUUID(),set?value:Math.addExact(s.balance(p.getUUID()),value));
         sync(p,false,"");return 1;
     }
     private static int pay(ServerPlayer from,ServerPlayer to,long amount){
-        if(from.getUUID().equals(to.getUUID()))return 0;
+        if(from.getUUID().equals(to.getUUID())){tell(from,"Нельзя переводить мастерки самому себе.",ChatFormatting.RED);return 0;}
         Saved s=Saved.of(from.serverLevel());
         if(amount<=0||s.balance(from.getUUID())<amount){tell(from,"Недостаточно мастерков.",ChatFormatting.RED);return 0;}
         if(s.balance(to.getUUID())>Long.MAX_VALUE-amount){tell(from,"Баланс получателя переполнен.",ChatFormatting.RED);return 0;}
@@ -308,15 +309,17 @@ public final class Masterki {
         for(Contract c:contracts())tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
         for(Contract c:dailyTasks())tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
-            products,tasks,List.copyOf(data.logs(p.getUUID()))));
+            products,tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries()));
     }
     public static void action(ServerPlayer player,MasterkiNetwork.Action req){
         Saved data=Saved.of(player.serverLevel());
         data.restockIfDue();
         int qty=req.count();
+        if(MasterkiLayout.editorAction(player,req.kind(),req.id(),req.count()))return;
+        if("open".equals(req.kind())){sync(player,true,"");return;}
         if("top".equals(req.kind())){top(player);return;}
         if("help".equals(req.kind())){
-            tell(player,"Команды: /shop, /money, /money pay, /money top, /contracts",ChatFormatting.YELLOW);return;
+            tell(player,"Команды: /shop, /money, /pay, /money top, /contracts",ChatFormatting.YELLOW);return;
         }
         if(qty<=0||qty>4096){tell(player,"Недопустимое количество.",ChatFormatting.RED);return;}
         if(player.getAbilities().instabuild &&

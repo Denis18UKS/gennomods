@@ -14,6 +14,7 @@ public final class MasterkiNetwork {
     private MasterkiNetwork(){}
     public record Product(String id,String category,long buy,long sell,int stock,int daily,int cap){}
     public record Task(String id,String item,int amount,long reward){}
+    public record LayoutEntry(String id,int x,int y,int scale,boolean visible){}
 
     public record Action(String kind,String id,int count) implements CustomPacketPayload{
         public static final Type<Action> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("masterki","action"));
@@ -23,7 +24,7 @@ public final class MasterkiNetwork {
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     public record Snapshot(boolean open,String tab,long balance,long nextRestock,
-                           List<Product> products,List<Task> tasks,List<String> history)
+                           List<Product> products,List<Task> tasks,List<String> history,List<LayoutEntry> layout)
             implements CustomPacketPayload {
         public static final Type<Snapshot> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("masterki","state"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Snapshot> CODEC=StreamCodec.of(
@@ -43,6 +44,8 @@ public final class MasterkiNetwork {
                 }
                 buf.writeVarInt(p.history.size());
                 for(String line:p.history)buf.writeUtf(line,255);
+                buf.writeVarInt(p.layout.size());
+                for(LayoutEntry e:p.layout){buf.writeUtf(e.id(),64);buf.writeInt(e.x());buf.writeInt(e.y());buf.writeVarInt(e.scale());buf.writeBoolean(e.visible());}
             },
             buf->{
                 boolean open=buf.readBoolean();String tab=buf.readUtf(32);
@@ -55,7 +58,11 @@ public final class MasterkiNetwork {
                     buf.readVarInt(),buf.readLong()));
                 int historyCount=Math.min(100,buf.readVarInt());List<String> history=new ArrayList<>();
                 for(int i=0;i<historyCount;i++)history.add(buf.readUtf(255));
-                return new Snapshot(open,tab,balance,next,rows,tasks,history);
+                int layoutCount=Math.min(64,buf.readVarInt());
+                List<LayoutEntry> layout=new ArrayList<>();
+                for(int i=0;i<layoutCount;i++)layout.add(new LayoutEntry(
+                    buf.readUtf(64),buf.readInt(),buf.readInt(),buf.readVarInt(),buf.readBoolean()));
+                return new Snapshot(open,tab,balance,next,rows,tasks,history,layout);
             });
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }

@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.ChatFormatting;
+import com.mojang.math.Axis;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -79,9 +82,19 @@ public final class ShopScreen extends Screen {
         Item item=BuiltInRegistries.ITEM.get(resource);
         return item==Items.AIR?ItemStack.EMPTY:new ItemStack(item);
     }
-    private void text(GuiGraphics g,String s,int x,int y,int color){g.drawString(font,s,x,y,color,false);}
+    private void text(GuiGraphics g,String s,int x,int y,int color){
+        g.pose().pushPose();
+        g.pose().translate(x,y,0);
+        g.pose().scale(1.18f,1.18f,1);
+        g.drawString(font,s,0,0,color,false);
+        g.pose().popPose();
+    }
     private void centered(GuiGraphics g,String s,int x,int y,int col){
-        g.drawString(font,s,x-font.width(s)/2,y,col,false);
+        g.pose().pushPose();
+        g.pose().translate(x,y,0);
+        g.pose().scale(1.13f,1.13f,1);
+        g.drawString(font,s,-font.width(s)/2,0,col,false);
+        g.pose().popPose();
     }
     private static void panel(GuiGraphics g,int x,int y,int w,int h,boolean lit){
         g.fill(x+2,y+3,x+w+2,y+h+3,0xAB000000);
@@ -100,11 +113,16 @@ public final class ShopScreen extends Screen {
     private static int[] yAndH(int y,int h){return new int[]{y+3,y+h-6};}
     private static void button(GuiGraphics g,int x,int y,int w,int h,String label,boolean active,int color){
         panel(g,x,y,w,h,active);
-        int width=Minecraft.getInstance().font.width(label);
-        g.drawString(Minecraft.getInstance().font,label,x+(w-width)/2,y+(h-8)/2,color,false);
+        float size=1.16f;
+        int textWidth=Minecraft.getInstance().font.width(label);
+        g.pose().pushPose();
+        g.pose().translate(x+(w-textWidth*size)/2,y+(h-8*size)/2,0);
+        g.pose().scale(size,size,1);
+        g.drawString(Minecraft.getInstance().font,label,0,0,color,false);
+        g.pose().popPose();
     }
     private void coin(GuiGraphics g,int x,int y,int size){
-        g.blit(ClientEconomy.COIN,x,y,0,0,size,size,64,64);
+        ClientLayout.coin(g,x,y,size);
     }
     private String timeLeft(){
         long s=Math.max(0,(data.nextRestock()-System.currentTimeMillis())/1000);
@@ -124,12 +142,20 @@ public final class ShopScreen extends Screen {
         coin(g,16,12,52);
         text(g,"МАГАЗИН МАСТЕРКОВ",78,19,GOLD);
         text(g,"M A S T E R K I   E C O N O M Y",78,40,0xFFE2B276);
-        gear(g,433,30,18,0xFFB66B23);
+        if(ClientLayout.visible("shop_gear")){
+            ClientLayout.start(g,"shop_gear",433,30);
+            gear(g,433,30,18,0xFFB66B23);
+            ClientLayout.end(g);
+        }
 
-        panel(g,610,8,242,62,true);
-        text(g,"Ваш баланс:",657,19,LIGHT);
-        coin(g,625,30,26);
-        text(g,format(data.balance())+" М",659,39,GOLD);
+        if(ClientLayout.visible("shop_balance")){
+            ClientLayout.start(g,"shop_balance",610,8);
+            panel(g,610,8,242,62,true);
+            text(g,"Ваш баланс:",657,19,LIGHT);
+            coin(g,625,30,26);
+            text(g,format(data.balance())+" М",659,39,GOLD);
+            ClientLayout.end(g);
+        }
         button(g,856,11,34,52,"X",false,GOLD);
 
         int[] starts={10,160,310,460,610,760};
@@ -245,12 +271,20 @@ public final class ShopScreen extends Screen {
             button(g,768,421,110,27,"Продать",false,GOLD);
         }else{text(g,"Выберите товар",661,153,LIGHT);}
 
-        panel(g,10,462,264,43,false);coin(g,18,472,25);
-        text(g,"Следующая поставка",50,471,LIGHT);
-        text(g,timeLeft(),50,485,GOLD);
-        panel(g,283,462,327,43,false);
-        text(g,"ЕЖЕДНЕВНЫЕ ЗАКАЗЫ",299,470,GOLD);
-        text(g,"Контракты на ресурсы и Create",299,486,LIGHT);
+        if(ClientLayout.visible("shop_delivery")){
+            ClientLayout.start(g,"shop_delivery",10,462);
+            panel(g,10,462,264,43,false);coin(g,18,472,25);
+            text(g,"Следующая поставка",50,471,LIGHT);
+            text(g,timeLeft(),50,485,GOLD);
+            ClientLayout.end(g);
+        }
+        if(ClientLayout.visible("shop_tasks")){
+            ClientLayout.start(g,"shop_tasks",283,462);
+            panel(g,283,462,327,43,false);
+            text(g,"ЕЖЕДНЕВНЫЕ ЗАКАЗЫ",299,470,GOLD);
+            text(g,"Контракты на ресурсы и Create",299,486,LIGHT);
+            ClientLayout.end(g);
+        }
         button(g,618,462,127,43,"Топ игроков",false,GOLD);
         button(g,753,462,137,43,"Помощь",false,GOLD);
         g.pose().popPose();
@@ -266,17 +300,22 @@ public final class ShopScreen extends Screen {
         g.fill(x,y,x+1,y+h,col);g.fill(x+w-1,y,x+w,y+h,col);
     }
     private void gear(GuiGraphics g,int cx,int cy,int radius,int color){
-        g.fill(cx-radius/2,cy-radius/2,cx+radius/2,cy+radius/2,color);
-        for(int a=0;a<8;a++){
-            double angle=a*Math.PI/4+System.currentTimeMillis()/9000.0;int x=cx+(int)(Math.cos(angle)*radius);int y=cy+(int)(Math.sin(angle)*radius);
-            g.fill(x-3,y-3,x+3,y+3,color);
-        }
-        g.fill(cx-4,cy-4,cx+4,cy+4,DARK);
+        ItemStack wheel=stack("create:cogwheel");
+        if(wheel.isEmpty())wheel=new ItemStack(Items.CLOCK);
+        g.pose().pushPose();
+        g.pose().translate(cx,cy,40);
+        g.pose().mulPose(Axis.ZP.rotationDegrees((System.currentTimeMillis()%8000L)*0.045f));
+        g.pose().scale(1.8f,1.8f,1);
+        g.renderItem(wheel,-8,-8);
+        g.pose().popPose();
     }
     private float atX(double x){return (float)((x-px)/uiScale);}
     private float atY(double y){return (float)((y-py)/uiScale);}
     @Override public boolean mouseClicked(double mx,double my,int button){
         float x=atX(mx),y=atY(my);
+        if(button==0&&x>=0&&x<VW&&y>=0&&y<VH)
+            Minecraft.getInstance().getSoundManager().play(
+                SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK,1.0f));
         if(x>=856&&y>=11&&x<890&&y<63){onClose();return true;}
         if(y>=77&&y<117){
             int[] starts={10,160,310,460,610,760};
