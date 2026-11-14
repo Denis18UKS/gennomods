@@ -397,11 +397,11 @@ public final class Masterki {
         } else if("sell".equals(req.kind())){
             if(player.getAbilities().instabuild){tell(player,"Продажа в творческом режиме отключена.",ChatFormatting.RED);sync(player,true,"");return;}
             if(itemCount(player,template)<qty){tell(player,"Недостаточно предметов без дополнительных компонентов.",ChatFormatting.RED);sync(player,true,"");return;}
-            if(!data.canSell(offer,qty)){tell(player,"Дневной лимит выкупа этого товара исчерпан.",ChatFormatting.RED);sync(player,true,"");return;}
+            if(!data.canSell(player.getUUID(),offer,qty,player.serverLevel())){tell(player,"Личный лимит выкупа этого товара на игровой день исчерпан.",ChatFormatting.RED);sync(player,true,"");return;}
             long earned=safeMultiply(offer.sell,qty);
             if(data.balance(player.getUUID())>Long.MAX_VALUE-earned){sync(player,true,"");return;}
             take(player,template,qty);
-            data.countSell(offer,qty);
+            data.countSell(player.getUUID(),offer,qty,player.serverLevel());
             data.setBalance(player.getUUID(),data.balance(player.getUUID())+earned);
             data.adjustStock(offer,qty);
             data.log(player.getUUID(),"Продажа "+offer.id+" x"+qty+" (+"+earned+" М)");
@@ -462,8 +462,11 @@ public final class Masterki {
         final Map<UUID,Long> bossDay=new HashMap<>();
         final Map<UUID,Long> dailyDay=new HashMap<>();
         final Map<UUID,java.util.Set<String>> dailyCompleted=new HashMap<>();
-        final Map<String,Integer> soldToday=new HashMap<>();
-        long buybackDay=System.currentTimeMillis()/DAY_MS;
+        // Per-player, per-item buyback counts for the current Overworld calendar day.
+        // The older shared real-world-day counters cannot be attributed to individual
+        // players, so they are intentionally not migrated from v1.0.7.
+        final Map<UUID,Map<String,Integer>> soldByPlayer=new HashMap<>();
+        long buybackGameDay=Long.MIN_VALUE;
         long nextRestock=System.currentTimeMillis()+DAY_MS;
         static Saved of(ServerLevel level){
             return level.getServer().overworld().getDataStorage()
@@ -528,18 +531,29 @@ public final class Masterki {
             nextRestock=System.currentTimeMillis()+DAY_MS;
             setDirty();
         }
-        private void updateBuybackDay(){
-            long today=System.currentTimeMillis()/DAY_MS;
-            if(buybackDay!=today){buybackDay=today;soldToday.clear();setDirty();}
+        private void updateBuybackDay(ServerLevel level){
+            // getDayTime() advances with the Overworld day/night cycle (24000 ticks).
+            // A bed skipping the night also advances this calendar-day counter.
+            // Use the Overworld even when the selling player is in another dimension.
+            long currentDay=Math.floorDiv(level.getServer().overworld().getDayTime(),24000L);
+            if(buybackGameDay!=currentDay){
+                buybackGameDay=currentDay;
+                soldByPlayer.clear();
+                setDirty();
+            }
         }
-        boolean canSell(Offer offer,int qty){
-            updateBuybackDay();
-            int cap=offer.daily()>0?offer.daily()*2:8;
-            return (long)soldToday.getOrDefault(offer.id(),0)+qty<=cap;
+        boolean canSell(UUID player,Offer offer,int qty,ServerLevel level){
+            updateBuybackDay(level);
+            long cap=offer.daily()>0?2L*offer.daily():8L;
+            int sold=soldByPlayer.getOrDefault(player,Map.of()).getOrDefault(offer.id(),0);
+            return qty>0 && (long)sold+qty<=cap;
         }
-        void countSell(Offer offer,int qty){
-            updateBuybackDay();
-            soldToday.merge(offer.id(),qty,Integer::sum);setDirty();
+        void countSell(UUID player,Offer offer,int qty,ServerLevel level){
+            updateBuybackDay(level);
+            soldByPlayer.computeIfAbsent(player,k->new HashMap<>())
+                .merge(offer.id(),qty,(before,added)->
+                    (int)Math.min(Integer.MAX_VALUE,(long)before+added));
+            setDirty();
         }
         boolean canCompleteDaily(UUID id,long day,String task){
             return dailyDay.getOrDefault(id,-1L)!=day ||
@@ -562,10 +576,17 @@ public final class Masterki {
         }
         @Override public CompoundTag save(CompoundTag tag,HolderLookup.Provider registries){
             tag.putLong("NextRestock",nextRestock);
-            tag.putLong("BuybackDay",buybackDay);
-            CompoundTag buybacks=new CompoundTag();
-            soldToday.forEach(buybacks::putInt);
-            tag.put("Buybacks",buybacks);
+            tag.putLong("BuybackGameDay",buybackGameDay);
+            ListTag buybacks=new ListTag();
+            for(var entry:soldByPlayer.entrySet()){
+                CompoundTag user=new CompoundTag();
+                user.putUUID("UUID",entry.getKey());
+                CompoundTag items=new CompoundTag();
+                entry.getValue().forEach(items::putInt);
+                user.put("Items",items);
+                buybacks.add(user);
+            }
+            tag.put("BuybackUsers",buybacks);
             ListTag users=new ListTag();
             for(var e:balances.entrySet()){
                 CompoundTag u=new CompoundTag();u.putUUID("UUID",e.getKey());u.putLong("Balance",e.getValue());
@@ -597,9 +618,23 @@ public final class Masterki {
         static Saved load(CompoundTag tag,HolderLookup.Provider registries){
             Saved saved=new Saved();
             saved.nextRestock=tag.getLong("NextRestock");
-            saved.buybackDay=tag.getLong("BuybackDay");
-            CompoundTag savedBuybacks=tag.getCompound("Buybacks");
-            for(String id:savedBuybacks.getAllKeys())saved.soldToday.put(id,savedBuybacks.getInt(id));
+            // v1.0.7 used a single global Buybacks map and a real-world BuybackDay.
+            // Those keys are ignored: a global count cannot be safely assigned to a
+            // player, so every player begins the first new game-day cycle at 0.
+            saved.buybackGameDay=tag.contains("BuybackGameDay",Tag.TAG_LONG)
+                ?tag.getLong("BuybackGameDay"):Long.MIN_VALUE;
+            ListTag savedBuybacks=tag.getList("BuybackUsers",Tag.TAG_COMPOUND);
+            for(int i=0;i<savedBuybacks.size();i++){
+                CompoundTag user=savedBuybacks.getCompound(i);
+                if(!user.hasUUID("UUID"))continue;
+                CompoundTag items=user.getCompound("Items");
+                Map<String,Integer> counts=new HashMap<>();
+                for(String id:items.getAllKeys()){
+                    int amount=items.getInt(id);
+                    if(amount>0)counts.put(id,amount);
+                }
+                if(!counts.isEmpty())saved.soldByPlayer.put(user.getUUID("UUID"),counts);
+            }
             if(saved.nextRestock==0)saved.nextRestock=System.currentTimeMillis()+DAY_MS;
             ListTag users=tag.getList("Users",Tag.TAG_COMPOUND);
             for(int i=0;i<users.size();i++){

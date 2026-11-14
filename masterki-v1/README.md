@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.7 — TEST BUILD
+# Masterki Economy 1.0.8 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -9,7 +9,7 @@ NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client 
 - Balance widget below the vanilla inventory (adjusted left and fully scalable), away from JEI, optional temporary main-HUD indicator
 - Separate shop/sell/categories, search, filters, price sorting, favorites, item details, quantity choices and confirmation via server-side transaction
 - Items from vanilla, optional Create, other loaded mods, editable `config/masterki/products.json`
-- Server-validated purchases, sales, bulk discounts, bounded stock, per-day buyback caps, payment history
+- Server-validated purchases, sales, bulk discounts, bounded stock, individual per-item buyback caps reset on each Overworld game day, payment history
 - 24-hour **real-time** restocking with persisted timestamp; OP forced restock
 - 40 individually rotated production contracts (includes Create parts when installed), each paid once per rotation; no daily total cap
 - 3 smaller rotating daily tasks, each claimable once per real day per player
@@ -139,3 +139,12 @@ On first load, the mod creates `config/masterki/contract_schedule.json` on the s
 ```
 
 The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Changes are picked up by `/masterki admin reload` or a server restart. Do not change the clock during an active contract cycle unless players accept that schedules will be recalculated. The older commands `/masterki dev contracts set rotation_hours` and `... deadline_hours` are removed because all contracts now use the shared daily calendar boundary.
+
+## Individual buyback caps on the Minecraft day/night cycle (v1.0.8)
+
+- The old **server-wide** daily buyback counter is replaced with independent **UUID + item-ID** counters. Another player selling the same resource does not consume your quota. Different items are tracked independently for each player.
+- **No per-item cap values or prices changed.** Existing formula remains `offer.daily > 0 ? offer.daily * 2 : 8` (computed in long arithmetic). The cap restricts sales **to the shop**, not purchases.
+- The quota resets when the **Overworld's dayTime crosses to another 24,000-tick calendar day**, not after 24 real hours. Sleeping the night advances this clock and can reset the quota; server downtime and player reconnection do not advance the day clock or reset the counter. The Overworld controls the cycle for all dimensions.
+- Player-specific counters are stored in the existing world SavedData `masterki_economy.dat` under `BuybackGameDay` and `BuybackUsers`. A server restart preserves the current game's per-player quota.
+- Upgrade from 1.0.7: the old shared `Buybacks` count cannot be attributed fairly to particular UUIDs, so it is not migrated; everyone's **buyback quota alone** starts fresh on their first attempt to sell in 1.0.8. Existing balances, historical transactions, stocks, contracts, daily tasks, hunting data, configs and unrelated economy fields are retained.
+- Only the buyback quota's scope and reset clock change. Contract renewal, daily tasks and hunting use the previously configured real-world 05:00 server time, unchanged.
