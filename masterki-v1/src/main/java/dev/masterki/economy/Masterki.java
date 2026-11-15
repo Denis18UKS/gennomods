@@ -187,11 +187,33 @@ public final class Masterki {
         }
         int n=0;
         for(Offer offer:selected){
-            int quantity=offer.buy()<40?64:offer.buy()<300?32:8;
-            long reward=Math.max(50,offer.sell()*quantity*120/100);
+            // Very rare non-stackable items must never require 6-12 copies.
+            int quantity=offer.id().equals("minecraft:elytra")?1:
+                offer.id().equals("minecraft:nether_star")?2:
+                offer.buy()>=6000?2:offer.buy()>=1500?4:
+                offer.buy()>=300?8:offer.buy()>=40?32:64;
+            long reward=contractReward(offer.id(),quantity);
             result.add(new Contract("c"+(++n),offer.id(),quantity,reward));
         }
         return result;
+    }
+
+    /** Real item count and configured market value, not a fixed reward ceiling.
+     * Always pays less than buying identical items from the store.
+     * The current accepted payout remains frozen in MasterkiContracts.
+     */
+    public static long contractReward(String itemId,int amount){
+        Offer offer=null;
+        for(Offer candidate:offers())if(candidate.id().equals(itemId)){
+            offer=candidate;break;
+        }
+        if(offer==null||amount<=0)return 40L;
+        int premium=(itemId.equals("minecraft:nether_star")||
+            itemId.equals("minecraft:elytra")||
+            itemId.equals("minecraft:dragon_egg"))?150:
+            offer.category().equals("Create")?130:120;
+        long reward=offer.sell()*(long)amount*premium/100L;
+        return Math.max(40L,reward);
     }
 
     /** Three small daily tasks, rotated against the actual date rather than Minecraft ticks. */
@@ -276,7 +298,22 @@ public final class Masterki {
                 .then(Commands.literal("set")
                     .then(Commands.argument("player",EntityArgument.player())
                       .then(Commands.argument("amount",LongArgumentType.longArg(0))
-                        .executes(c->adminMoney(c.getSource().getLevel(),EntityArgument.getPlayer(c,"player"),LongArgumentType.getLong(c,"amount"),true))))))));
+                        .executes(c->adminMoney(c.getSource().getLevel(),EntityArgument.getPlayer(c,"player"),LongArgumentType.getLong(c,"amount"),true))))))
+                .then(Commands.literal("inspect")
+                    .then(Commands.argument("player",EntityArgument.player())
+                        .executes(c->{
+                            ServerPlayer p=EntityArgument.getPlayer(c,"player");
+                            Saved data=Saved.of(c.getSource().getLevel());
+                            Long saved=data.balances.get(p.getUUID());
+                            var history=data.logs(p.getUUID());
+                            c.getSource().sendSuccess(()->Component.literal(
+                                "[Masterki] "+p.getGameProfile().getName()+
+                                " UUID="+p.getUUID()+
+                                " | balance="+(saved==null?"не создан":saved+" М")+
+                                " | history="+history.size()+
+                                " | last="+(history.isEmpty()?"нет":history.get(0))),false);
+                            return 1;
+                        })))));
         MasterkiLayout.register(d);
         MasterkiContracts.register(d);
         MasterkiOpRecovery.register(d);

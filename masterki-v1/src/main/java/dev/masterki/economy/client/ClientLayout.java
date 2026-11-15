@@ -16,7 +16,8 @@ public final class ClientLayout {
     }
     public static MasterkiNetwork.LayoutEntry get(String id){
         return entries.getOrDefault(id,new MasterkiNetwork.LayoutEntry(id,
-            "inventory_wallet".equals(id)?-32:0,0,100,true));
+            "inventory_wallet".equals(id)?-32:0,0,
+            "hud_contracts".equals(id)?70:100,true));
     }
     public static int x(String id){return get(id).x();}
     public static int y(String id){return get(id).y();}

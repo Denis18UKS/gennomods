@@ -35,6 +35,7 @@ public final class MasterkiContracts extends SavedData {
     private final Map<UUID, Board> boards = new HashMap<>();
     private final Map<UUID, List<Fine>> fineHistory = new HashMap<>();
     private int latePercent = 10;
+    private int contractPriceVersion = 0;
     private int cancelPercent = 5;
     private boolean finesEnabled = true;
     private transient ServerLevel serverLevel;
@@ -86,6 +87,16 @@ public final class MasterkiContracts extends SavedData {
         return result;
     }
     private Board board(UUID uuid,long now){
+        // One-time 1.0.10 migration: reprice only UNACCEPTED offers.
+        // Accepted payouts, completed payments and penalties are immutable.
+        if(contractPriceVersion<2){
+            for(Board old:boards.values())for(ContractEntry entry:old.entries){
+                if("available".equals(entry.state))
+                    entry.reward=Masterki.contractReward(entry.item,entry.amount);
+            }
+            contractPriceVersion=2;
+            setDirty();
+        }
         Board b=boards.computeIfAbsent(uuid,k->new Board());
         // Existing worlds may contain contracts created by 1.0.6 without a cycle key.
         // Migrate those in place, without wiping accepted/completed entries or fines.
@@ -181,7 +192,8 @@ public final class MasterkiContracts extends SavedData {
                 variant=variants[(java.util.Arrays.binarySearch(variants,variant)+1)%variants.length];
             int amount=Math.max(1,(int)Math.min(4096,
                 Math.round((double)c.amount()*variant/100.0)));
-            long reward=Math.max(40,Math.min(1250,(c.reward()*variant)/100L));
+            // Recompute by FINAL randomized amount, never cap all rare items at 1250.
+            long reward=Masterki.contractReward(c.item(),amount);
             ContractEntry entry=new ContractEntry("r"+board.rotation+"_"+c.id(),
                 c.id(),c.item(),amount,reward,board.rotation);
             entry.difficult=classify(c.item(),amount);
@@ -371,6 +383,7 @@ public final class MasterkiContracts extends SavedData {
     }
 
     @Override public CompoundTag save(CompoundTag tag,HolderLookup.Provider registries){
+        tag.putInt("ContractPriceVersion",contractPriceVersion);
         tag.putInt("LatePercent",latePercent);
         tag.putInt("CancelPercent",cancelPercent);
         tag.putBoolean("FinesEnabled",finesEnabled);
@@ -412,6 +425,8 @@ public final class MasterkiContracts extends SavedData {
     }
     private static MasterkiContracts load(CompoundTag tag,HolderLookup.Provider registries){
         MasterkiContracts s=new MasterkiContracts();
+        s.contractPriceVersion=tag.contains("ContractPriceVersion",Tag.TAG_INT)
+            ?tag.getInt("ContractPriceVersion"):0;
         s.latePercent=tag.contains("LatePercent")?Math.clamp(tag.getInt("LatePercent"),0,100):10;
         s.cancelPercent=tag.contains("CancelPercent")?Math.clamp(tag.getInt("CancelPercent"),0,100):5;
         s.finesEnabled=!tag.contains("FinesEnabled")||tag.getBoolean("FinesEnabled");
@@ -429,7 +444,7 @@ public final class MasterkiContracts extends SavedData {
                 String key=t.getString("Key"),item=t.getString("Item");
                 if(key.length()>48||item.length()>128||key.isBlank()||item.isBlank())continue;
                 ContractEntry c=new ContractEntry(key,t.getString("Pool"),item,
-                    Math.clamp(t.getInt("Amount"),1,4096),Math.clamp(t.getLong("Reward"),1,1000000),
+                    Math.clamp(t.getInt("Amount"),1,4096),Math.clamp(t.getLong("Reward"),1L,10_000_000_000_000L),
                     t.getLong("Rotation"));
                 c.state=t.getString("State");c.dueAt=t.getLong("Due");
                 c.acceptedPayout=t.contains("AcceptedPayout",Tag.TAG_LONG)

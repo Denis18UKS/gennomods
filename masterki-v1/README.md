@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.9 — TEST BUILD
+# Masterki Economy 1.0.10 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -158,3 +158,15 @@ The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Change
 - Tier multipliers affect completed hunts, contracts, three daily jobs, first-time achievements, and exploration rewards. Contract reward is **frozen when accepted** and persisted to avoid switching tiers immediately before turning in a valuable contract; existing accepted contracts with no frozen reward preserve their original 1.0.8 amount. Shop item prices remain identical for all players.
 - Per-species hunt statistics persist in `masterki_economy` SavedData and reset at the **existing real-world 05:00 Ufa** boundary, independent of the 24,000-tick personal shop sell limits. Old aggregate hunt counters remain stored for compatibility, but do not affect the new species-separated caps.
 - This is still a development build. Run client/server multiplayer trials with **the matching Apotheosis 1.21.1 release** to confirm the tier registry from a full modpack.
+
+## v1.0.10 — one-click purchase, balanced contract payouts and compact HUD
+
+- The **Магазин** tab now has **Купить 1 предмет** and **Купить N**. Buying one unit is a real server-validated transaction with a `count=1` packet, independent of the selected quantity. The **Продажа** tab still has **Продать 1** and **Продать N**. Purchase and sell controls are scoped strictly to their matching tabs.
+- **Contracts:** the old global **1250M ceiling is removed**. New payouts use the actual configured per-item sell price times the randomized final quantity. Rare Nether Stars and Elytra get a 150% contract premium over the normal sell value; Create parts 130%; regular items 120%. Apotheosis world-tier coefficients apply afterward. This makes a Nether Star or Elytra contract far more valuable than a simple anvil contract, without making buying from the shop and turning in the contract profitable under normal prices.
+- Newly generated rare contracts request fewer items: Nether Stars typically 2 (variant 1–3), Elytra typically 1 (variant 1–2); other high-value offers also have reduced quantities. Existing **accepted** contracts keep their exact frozen payout and deadline. **Only available/unaccepted** contracts are repriced on first v1.0.10 world load, with a persistent price-schema marker. Completed records, fines, bank balances and rotation progress remain intact. No user data is reset.
+- Contract rows display the total reward and approximate **reward per unit**. Contracts, daily jobs, history and settings now use a full-width panel without irrelevant item catalogue categories, right-side selection panel, or trade buttons.
+- **Contract HUD:** translucent smaller layout and a compact/expanded display mode. The default layout scale is 70% for new players; existing server-assigned custom sizes/positions remain intact. Compact mode displays two active orders, expanded up to three, with item names, live resource progress, payout, and deadline. Additional active contracts are counted and all accepted contracts can still trigger ready notifications. Local mode/enable preferences survive client restarts via `config/masterki/client_hud.json`. The existing dev layout editor still controls screen position/scale/visibility.
+- **Balance diagnostics:** the existing `masterki_economy` overworld SavedData serializer/deserializer already persists balances by UUID and remains unchanged. For investigating a displayed 0 M, OPs can run `/masterki admin money inspect <player>` to view the persisted value, UUID, transaction-history size and most recent entry. This command **does not alter the balance**. A 0 M screenshot alone does not prove a save regression.
+- All species-specific hunting limits, Apotheosis tier payouts, calendar-rotation deadlines, per-player game-day sell limits, and old admin commands remain unchanged.
+
+**Deployment:** install exactly the same v1.0.10 JAR on both client and server, replacing v1.0.9; do not delete saved world files. Full multiplayer GUI tests, balance persistence after repeated server restarts, and integration with a particular installed Apotheosis modpack still need in-game verification.

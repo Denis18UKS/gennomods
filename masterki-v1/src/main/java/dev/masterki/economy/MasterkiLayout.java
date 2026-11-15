@@ -41,7 +41,8 @@ public final class MasterkiLayout extends SavedData {
     private static MasterkiNetwork.LayoutEntry original(String id) {
         // Slight leftward shift from the previous version; other elements are centered on their anchors.
         int dx = "inventory_wallet".equals(id) ? -32 : 0;
-        return new MasterkiNetwork.LayoutEntry(id, dx, 0, 100, true);
+        int scale="hud_contracts".equals(id)?70:100;
+        return new MasterkiNetwork.LayoutEntry(id, dx, 0, scale, true);
     }
 
     public MasterkiNetwork.LayoutEntry get(String id) {

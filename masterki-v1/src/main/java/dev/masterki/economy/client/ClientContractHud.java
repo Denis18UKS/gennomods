@@ -1,7 +1,15 @@
 package dev.masterki.economy.client;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import dev.masterki.economy.MasterkiNetwork;
 import net.minecraft.client.Minecraft;
@@ -16,13 +24,51 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.fml.loading.FMLPaths;
 
-/** Client-side, every-frame progress from inventory; server still verifies payouts. */
+/**
+ * Live progress uses the player's inventory, but only the server can complete/pay
+ * contracts. A persistent local setting chooses compact or expanded rendering.
+ */
 @EventBusSubscriber(modid="masterki",value=Dist.CLIENT)
 public final class ClientContractHud {
+    private static final Gson GSON=new GsonBuilder().setPrettyPrinting().create();
     private static List<MasterkiNetwork.ContractStatus> contracts=List.of();
     private static final Set<String> announcedReady=new HashSet<>();
+    private static boolean compact=true,enabled=true;
+    static { loadSettings(); }
     private ClientContractHud(){}
+
+    private static Path config(){
+        return FMLPaths.CONFIGDIR.get().resolve("masterki").resolve("client_hud.json");
+    }
+    private static void loadSettings(){
+        try{
+            Path path=config();
+            if(!Files.isRegularFile(path))return;
+            JsonObject json=JsonParser.parseString(Files.readString(path,StandardCharsets.UTF_8)).getAsJsonObject();
+            if(json.has("contract_hud_enabled"))enabled=json.get("contract_hud_enabled").getAsBoolean();
+            if(json.has("contract_hud_compact"))compact=json.get("contract_hud_compact").getAsBoolean();
+        }catch(Exception e){
+            System.err.println("[Masterki] Client HUD settings not loaded: "+e.getMessage());
+        }
+    }
+    private static void saveSettings(){
+        try{
+            Path path=config();
+            Files.createDirectories(path.getParent());
+            JsonObject json=new JsonObject();
+            json.addProperty("contract_hud_enabled",enabled);
+            json.addProperty("contract_hud_compact",compact);
+            Files.writeString(path,GSON.toJson(json),StandardCharsets.UTF_8);
+        }catch(Exception e){
+            System.err.println("[Masterki] Cannot save HUD settings: "+e.getMessage());
+        }
+    }
+    public static boolean enabled(){return enabled;}
+    public static boolean compact(){return compact;}
+    public static void toggleEnabled(){enabled=!enabled;saveSettings();}
+    public static void toggleMode(){compact=!compact;saveSettings();}
 
     public static void receive(List<MasterkiNetwork.ContractStatus> all){
         contracts=all.stream().filter(c->"accepted".equals(c.status())).toList();
@@ -46,52 +92,69 @@ public final class ClientContractHud {
     private static String name(String item){
         ResourceLocation id=ResourceLocation.tryParse(item);
         if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return item;
-        String name=new ItemStack(BuiltInRegistries.ITEM.get(id)).getHoverName().getString();
-        return name.length()>25?name.substring(0,24)+"…":name;
+        return new ItemStack(BuiltInRegistries.ITEM.get(id)).getHoverName().getString();
+    }
+    private static String fit(Minecraft mc,String text,int maxWidth){
+        if(mc.font.width(text)<=maxWidth)return text;
+        while(!text.isEmpty()&&mc.font.width(text+"…")>maxWidth)
+            text=text.substring(0,text.length()-1);
+        return text+"…";
+    }
+    private static String reward(long value){
+        return String.format(Locale.ROOT,"%,d",value).replace(',',' ');
     }
     private static String remaining(long deadline){
         long secs=Math.max(0,(deadline-System.currentTimeMillis())/1000);
-        if(secs>=86400)return String.format("%dд %02dч",secs/86400,(secs%86400)/3600);
-        if(secs>=3600)return String.format("%dч %02dм",secs/3600,(secs%3600)/60);
-        return String.format("%dм %02dс",secs/60,secs%60);
+        if(secs>=86400)return String.format(Locale.ROOT,"%dд %02dч",secs/86400,(secs%86400)/3600);
+        if(secs>=3600)return String.format(Locale.ROOT,"%dч %02dм",secs/3600,(secs%3600)/60);
+        return String.format(Locale.ROOT,"%dм %02dс",secs/60,secs%60);
     }
+
     @SubscribeEvent
     public static void render(RenderGuiEvent.Post event){
         Minecraft mc=Minecraft.getInstance();
         if(mc.screen!=null||mc.options.hideGui||mc.player==null||contracts.isEmpty()
-            ||!ClientLayout.visible("hud_contracts"))return;
-        GuiGraphics g=event.getGuiGraphics();
-        int x=10,y=12,width=226,rows=Math.min(3,contracts.size());
-        int height=23+rows*44+(contracts.size()>3?13:0);
-        ClientLayout.start(g,"hud_contracts",x,y);
-        g.fill(x,y,x+width,y+height,0xDC211710);
-        g.fill(x,y,x+width,y+2,0xFFD7A04B);
-        g.drawString(mc.font,"АКТИВНЫЕ КОНТРАКТЫ",x+9,y+7,0xFFFFCE75,false);
-        for(int i=0;i<rows;i++){
-            var contract=contracts.get(i);
-            int count=Math.min(contract.amount(),inventoryCount(mc,contract.item()));
-            boolean ready=count>=contract.amount();
-            if(ready && announcedReady.add(contract.id()))
+            ||!enabled||!ClientLayout.visible("hud_contracts"))return;
+
+        // Notify for ALL accepted contracts, not just the visible first rows.
+        for(var c:contracts){
+            boolean ready=inventoryCount(mc,c.item())>=c.amount();
+            if(ready && announcedReady.add(c.id()))
                 mc.player.displayClientMessage(Component.literal(
-                    "Контракт готов к сдаче: "+name(contract.item())),true);
-            if(!ready)announcedReady.remove(contract.id());
-            int cy=y+24+i*44;
-            String title=name(contract.item());
-            g.drawString(mc.font,title,x+9,cy,ready?0xFF9DEC86:0xFFF6D6A3,false);
-            g.drawString(mc.font,count+"/"+contract.amount(),x+width-9-mc.font.width(count+"/"+contract.amount()),
-                cy,0xFFFFFFFF,false);
-            g.fill(x+9,cy+13,x+width-9,cy+19,0xFF493526);
-            int available=width-18;
-            int completed=(int)Math.min(available,(long)available*count/Math.max(1,contract.amount()));
-            g.fill(x+9,cy+13,x+9+completed,cy+19,ready?0xFF84D46A:0xFFD8A04F);
-            String footer=ready?"ГОТОВ К СДАЧЕ":remaining(contract.deadline());
-            g.drawString(mc.font,"+"+contract.reward()+" М",x+9,cy+25,0xFFE6BC70,false);
-            g.drawString(mc.font,footer,x+width-9-mc.font.width(footer),cy+25,
-                contract.deadline()-System.currentTimeMillis()<7200000L?0xFFF68A7A:0xFFBFC39C,false);
+                    "Контракт готов к сдаче: "+name(c.item())),true);
+            if(!ready)announcedReady.remove(c.id());
         }
-        if(contracts.size()>3)
-            g.drawString(mc.font,"Ещё активных контрактов: "+(contracts.size()-3),
-                x+9,y+23+rows*44,0xFFC9AC86,false);
+
+        GuiGraphics g=event.getGuiGraphics();
+        int x=10,y=12,w=compact?172:220;
+        int rows=Math.min(compact?2:3,contracts.size()),stride=compact?38:44;
+        int h=23+rows*stride+(contracts.size()>rows?13:0);
+        ClientLayout.start(g,"hud_contracts",x,y);
+        g.fill(x,y,x+w,y+h,0xBB211710);
+        g.fill(x,y,x+w,y+2,0xFFD7A04B);
+        g.drawString(mc.font,"АКТИВНЫЕ КОНТРАКТЫ",x+8,y+7,0xFFFFCE75,false);
+        for(int i=0;i<rows;i++){
+            var c=contracts.get(i);
+            int cy=y+22+i*stride;
+            int count=Math.min(c.amount(),inventoryCount(mc,c.item()));
+            boolean ready=count>=c.amount();
+            String title=fit(mc,name(c.item()),w-16);
+            g.drawString(mc.font,title,x+8,cy,ready?0xFFA6E69A:0xFFF6D6A3,false);
+            g.fill(x+8,cy+12,x+w-8,cy+17,0xAA493526);
+            int inner=w-16;
+            int filled=(int)Math.min(inner,(long)inner*count/Math.max(1,c.amount()));
+            g.fill(x+8,cy+12,x+8+filled,cy+17,ready?0xFF84D46A:0xFFD8A04F);
+            String left=count+"/"+c.amount()+"  +"+reward(c.reward())+" М";
+            String right=remaining(c.deadline());
+            int rightWidth=mc.font.width(right);
+            g.drawString(mc.font,fit(mc,left,w-25-rightWidth),x+8,cy+23,
+                ready?0xFFA6E69A:0xFFE6BC70,false);
+            g.drawString(mc.font,right,x+w-8-rightWidth,cy+23,
+                c.deadline()-System.currentTimeMillis()<7200000L?0xFFF68A7A:0xFFC4C6AC,false);
+        }
+        if(contracts.size()>rows)
+            g.drawString(mc.font,"+"+(contracts.size()-rows)+" контрактов",
+                x+8,y+22+rows*stride,0xFFC9AC86,false);
         ClientLayout.end(g);
     }
 }

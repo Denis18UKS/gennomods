@@ -120,7 +120,8 @@ public final class LayoutEditorScreen extends Screen {
             case GLFW.GLFW_KEY_R -> {
                 PacketDistributor.sendToServer(new MasterkiNetwork.Action("layout_reset",id(),1));
                 staged.put(id(),new MasterkiNetwork.LayoutEntry(id(),
-                    "inventory_wallet".equals(id())?-32:0,0,100,true));
+                    "inventory_wallet".equals(id())?-32:0,0,
+                    "hud_contracts".equals(id())?70:100,true));
             }
             default -> {return super.keyPressed(key,scan,modifiers);}
         }
