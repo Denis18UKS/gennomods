@@ -315,7 +315,7 @@ public final class ShopScreen extends Screen {
             g.fill(662,188,878,189,0xFF86572A);
             boolean selling=tab.equals("Продажа");
             labelRow(g,selling?"Цена выкупа:":"Цена покупки:",
-                format(selling?selected.sell():selected.buy())+" М / шт.");
+                format(selling?selected.sell():selected.buy())+" М / шт.",198);
             labelRow(g,"На складе:",selected.stock()+" шт.",242);
             labelRow(g,"Поставка в сутки:", "+"+selected.daily(),264);
             labelRow(g,"Макс. запас:",selected.cap()+" шт.",286);
