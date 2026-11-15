@@ -37,6 +37,7 @@ public final class ClientEconomy {
         balance=snapshot.balance();
         latest=snapshot;
         ClientLayout.receive(snapshot.layout());
+        ClientContractHud.receive(snapshot.contracts());
         if(!snapshot.open()&&mc.screen==null)catalog.clear();
         if(snapshot.open()&&!(mc.screen instanceof ShopScreen))catalog.clear();
         if(mc.screen instanceof ShopScreen screen)screen.snapshot(withProducts(snapshot));

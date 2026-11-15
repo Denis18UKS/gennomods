@@ -13,7 +13,7 @@ import org.lwjgl.glfw.GLFW;
 public final class LayoutEditorScreen extends Screen {
     private static final String[] IDS={
         "inventory_wallet","inventory_coin","inventory_balance",
-        "hud_wallet","hud_coin","hud_balance",
+        "hud_wallet","hud_coin","hud_balance","hud_contracts",
         "shop_balance","shop_gear","shop_delivery","shop_tasks"
     };
     private final Map<String,MasterkiNetwork.LayoutEntry> staged=new HashMap<>();

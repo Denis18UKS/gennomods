@@ -306,15 +306,16 @@ public final class ShopScreen extends Screen {
         }
 
         panel(g,647,123,243,332,false);
-        if(selected!=null){
+        if(selected!=null&&(tab.equals("Магазин")||tab.equals("Продажа"))){
             ItemStack item=stack(selected.id());
             if(!item.isEmpty())g.renderItem(item,667,147);
             text(g,shorten(item.getHoverName().getString(),24),691,147,GOLD);
             text(g,shorten(selected.id(),29),661,167,0xFFBEA990);
             button(g,853,138,28,28,ClientEconomy.favorites.contains(selected.id())?"★":"☆",false,GOLD);
             g.fill(662,188,878,189,0xFF86572A);
-            labelRow(g,"Купить:",selected.buy()+" М / шт.",198);
-            labelRow(g,"Продать:",selected.sell()+" М / шт.",220);
+            boolean selling=tab.equals("Продажа");
+            labelRow(g,selling?"Цена выкупа:":"Цена покупки:",
+                format(selling?selected.sell():selected.buy())+" М / шт.");
             labelRow(g,"На складе:",selected.stock()+" шт.",242);
             labelRow(g,"Поставка в сутки:", "+"+selected.daily(),264);
             labelRow(g,"Макс. запас:",selected.cap()+" шт.",286);
@@ -324,11 +325,17 @@ public final class ShopScreen extends Screen {
             button(g,761,332,27,29,"+",false,GOLD);
             int[] counts={16,32,64,256};
             for(int i=0;i<4;i++)button(g,660+i*54,367,51,23,""+counts[i],qty==counts[i],GOLD);
-            long subtotal=selected.buy()*(long)qty,pc=qty>=256?85:qty>=64?90:qty>=16?95:100;
-            long cost=(subtotal/100)*pc+(subtotal%100)*pc/100;
-            text(g,"Итого:",661,402,LIGHT);text(g,format(cost)+" М",723,402,GOLD);
-            button(g,661,421,102,27,"Купить",false,GREEN);
-            button(g,768,421,110,27,"Продать",false,GOLD);
+            long subtotal=(selling?selected.sell():selected.buy())*(long)qty;
+            long pc=qty>=256?85:qty>=64?90:qty>=16?95:100;
+            long total=selling?subtotal:(subtotal/100)*pc+(subtotal%100)*pc/100;
+            text(g,selling?"Ты получишь:":"Стоимость:",661,402,LIGHT);
+            text(g,(selling?"+":"")+format(total)+" М",762,402,selling?GREEN:GOLD);
+            if(selling){
+                button(g,661,421,104,27,"Продать 1",false,GREEN);
+                button(g,770,421,108,27,"Продать "+qty,false,GOLD);
+            }else{
+                button(g,661,421,217,27,"Купить "+qty,false,GREEN);
+            }
         }else{text(g,"Выберите товар",661,153,LIGHT);}
 
         if(ClientLayout.visible("shop_delivery")){
@@ -432,7 +439,8 @@ public final class ShopScreen extends Screen {
                 }
             }
         }
-        if(selected!=null&&x>=853&&x<881&&y>=138&&y<167){
+        if(selected!=null&&(tab.equals("Магазин")||tab.equals("Продажа"))
+            &&x>=853&&x<881&&y>=138&&y<167){
             if(!ClientEconomy.favorites.add(selected.id()))ClientEconomy.favorites.remove(selected.id());
             if("Избранное".equals(category))filter();
             return true;
@@ -443,19 +451,28 @@ public final class ShopScreen extends Screen {
             page=Math.min(page,Math.max(0,(count-1)/(tab.equals("Контракты")?5:tab.equals("Задания")?8:15)));
             return true;
         }
-        if(x>=659&&x<789&&y>=332&&y<361){
+        if((tab.equals("Магазин")||tab.equals("Продажа"))&&selected!=null
+            &&x>=659&&x<789&&y>=332&&y<361){
             if(x<687)qty=Math.max(1,qty-1);
             else if(x>760)qty=Math.min(4096,qty+1);
             return true;
         }
-        if(x>=660&&x<880&&y>=367&&y<391){
+        if((tab.equals("Магазин")||tab.equals("Продажа"))&&selected!=null
+            &&x>=660&&x<880&&y>=367&&y<391){
             int index=(int)((x-660)/54); int[] values={16,32,64,256};
             if(index>=0&&index<4)qty=values[index];
             return true;
         }
         if(selected!=null&&x>=661&&x<878&&y>=421&&y<448){
-            PacketDistributor.sendToServer(new MasterkiNetwork.Action(x<765?"buy":"sell",selected.id(),qty));
-            return true;
+            if(tab.equals("Магазин")){
+                PacketDistributor.sendToServer(new MasterkiNetwork.Action("buy",selected.id(),qty));
+                return true;
+            }
+            if(tab.equals("Продажа")){
+                int amount=x<766?1:qty;
+                PacketDistributor.sendToServer(new MasterkiNetwork.Action("sell",selected.id(),amount));
+                return true;
+            }
         }
         if(x>=283&&x<610&&y>=462&&y<505){tab="Контракты";page=0;return true;}
         if(x>=618&&x<745&&y>=462&&y<505){

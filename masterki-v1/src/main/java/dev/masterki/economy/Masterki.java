@@ -209,7 +209,13 @@ public final class Masterki {
     }
 
     private void tick(ServerTickEvent.Post e){
-        if(++tickCounter%1200!=0)return;
+        long tick=++tickCounter;
+        if(tick%100==0){
+            // Refresh contract deadlines and server-side status even while shop is closed.
+            for(ServerPlayer player:e.getServer().getPlayerList().getPlayers())
+                sync(player,false,"");
+        }
+        if(tick%1200!=0)return;
         Saved s=Saved.of(e.getServer().overworld());
         s.restockIfDue();
         MasterkiContracts.of(e.getServer().overworld()).tick(System.currentTimeMillis(),e.getServer().overworld());
@@ -230,10 +236,15 @@ public final class Masterki {
             Saved data=Saved.of(player.serverLevel());
             long now=System.currentTimeMillis(),day=MasterkiSchedule.cycleDay(now);
             long seconds=(MasterkiSchedule.nextCutoff(now)-now)/1000;
-            tell(player,"Охота: обычные мобы "+data.huntCount(player.getUUID(),day)+"/12, "+
-                "боссы "+data.bossHuntCount(player.getUUID(),day)+"/2. "+
-                "Обновление через "+String.format(java.util.Locale.ROOT,"%02d:%02d:%02d",
-                    seconds/3600,seconds/60%60,seconds%60)+".",ChatFormatting.GOLD);
+            tell(player,"Охота · Apotheosis: "+MasterkiDifficulty.tier(player)+
+                " ×"+MasterkiDifficulty.percent(player)/100.0+
+                ". Сброс через "+String.format(java.util.Locale.ROOT,"%02d:%02d:%02d",
+                    seconds/3600,seconds/60%60,seconds%60),ChatFormatting.GOLD);
+            for(var entry:data.speciesHuntOverview(player.getUUID(),day).entrySet()){
+                var rule=MasterkiRewards.rule(entry.getKey());
+                tell(player,rule.name()+": "+entry.getValue()+"/"+rule.dailyCap()+
+                    " · "+MasterkiDifficulty.adjusted(rule.baseReward(),player)+" М/убийство",ChatFormatting.YELLOW);
+            }
             return 1;
         }));
         d.register(Commands.literal("money")
@@ -303,14 +314,15 @@ public final class Masterki {
         long now=System.currentTimeMillis();
         List<String> dailyDone=new ArrayList<>();
         for(Contract c:dailyTasks()){
-            tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,c.reward));
+            tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,
+                MasterkiDifficulty.adjusted(c.reward, p)));
             if(!data.canCompleteDaily(p.getUUID(),MasterkiSchedule.cycleDay(now),c.id()))dailyDone.add(c.id());
         }
         MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
             List.of(),tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
             rotation.nextRotation(p.getUUID(),now),MasterkiSchedule.nextCutoff(now),
-            rotation.visible(p.getUUID(),now),dailyDone,MasterkiSchedule.zone().getId()));
+            rotation.visible(p,now),dailyDone,MasterkiSchedule.zone().getId()));
         if(open)sendCatalog(p,data);
     }
 
@@ -367,12 +379,13 @@ public final class Masterki {
                 tell(player,"Недостаточно предметов для задания.",ChatFormatting.RED);
                 sync(player,true,"daily");return;
             }
-            if(data.balance(player.getUUID())>Long.MAX_VALUE-task.reward()){sync(player,true,"daily");return;}
+            long pay=MasterkiDifficulty.adjusted(task.reward(),player);
+            if(data.balance(player.getUUID())>Long.MAX_VALUE-pay){sync(player,true,"daily");return;}
             take(player,new ItemStack(item),task.amount());
             data.completeDaily(player.getUUID(),day,task.id());
-            data.setBalance(player.getUUID(),data.balance(player.getUUID())+task.reward());
-            data.log(player.getUUID(),"Ежедневное задание: +"+task.reward()+" М");
-            tell(player,"Задание выполнено: +"+task.reward()+" М",ChatFormatting.GREEN);
+            data.setBalance(player.getUUID(),data.balance(player.getUUID())+pay);
+            data.log(player.getUUID(),"Ежедневное задание: +"+pay+" М");
+            tell(player,"Задание выполнено: +"+pay+" М",ChatFormatting.GREEN);
             sync(player,true,"daily");return;
         }
         if(offer==null){tell(player,"Товар отсутствует.",ChatFormatting.RED);sync(player,true,"");return;}
@@ -460,6 +473,9 @@ public final class Masterki {
         final Map<UUID,Long> huntDay=new HashMap<>();
         final Map<UUID,Integer> bossesToday=new HashMap<>();
         final Map<UUID,Long> bossDay=new HashMap<>();
+        // v1.0.9: separate per-player kill counters by exact mob type.
+        final Map<UUID,Map<String,Integer>> killsBySpecies=new HashMap<>();
+        final Map<UUID,Long> speciesKillDay=new HashMap<>();
         final Map<UUID,Long> dailyDay=new HashMap<>();
         final Map<UUID,java.util.Set<String>> dailyCompleted=new HashMap<>();
         // Per-player, per-item buyback counts for the current Overworld calendar day.
@@ -555,6 +571,26 @@ public final class Masterki {
                     (int)Math.min(Integer.MAX_VALUE,(long)before+added));
             setDirty();
         }
+        boolean recordSpeciesHunt(UUID uuid,long day,String species,int cap){
+            if(speciesKillDay.getOrDefault(uuid,Long.MIN_VALUE)!=day){
+                speciesKillDay.put(uuid,day);
+                killsBySpecies.remove(uuid);
+            }
+            Map<String,Integer> counts=killsBySpecies.computeIfAbsent(uuid,k->new HashMap<>());
+            int current=counts.getOrDefault(species,0);
+            if(current>=cap)return false;
+            counts.put(species,current+1);
+            setDirty();
+            return true;
+        }
+        int speciesHuntCount(UUID uuid,long day,String species){
+            return speciesKillDay.getOrDefault(uuid,Long.MIN_VALUE)==day
+                ?killsBySpecies.getOrDefault(uuid,Map.of()).getOrDefault(species,0):0;
+        }
+        Map<String,Integer> speciesHuntOverview(UUID uuid,long day){
+            if(speciesKillDay.getOrDefault(uuid,Long.MIN_VALUE)!=day)return Map.of();
+            return Map.copyOf(killsBySpecies.getOrDefault(uuid,Map.of()));
+        }
         boolean canCompleteDaily(UUID id,long day,String task){
             return dailyDay.getOrDefault(id,-1L)!=day ||
                 !dailyCompleted.getOrDefault(id,java.util.Set.of()).contains(task);
@@ -596,6 +632,10 @@ public final class Masterki {
                 u.putLong("HuntDay",huntDay.getOrDefault(e.getKey(),-1L));
                 u.putInt("BossHunts",bossesToday.getOrDefault(e.getKey(),0));
                 u.putLong("BossHuntDay",bossDay.getOrDefault(e.getKey(),-1L));
+                u.putLong("SpeciesHuntDay",speciesKillDay.getOrDefault(e.getKey(),-1L));
+                CompoundTag species=new CompoundTag();
+                killsBySpecies.getOrDefault(e.getKey(),Map.of()).forEach(species::putInt);
+                u.put("SpeciesKills",species);
                 u.putLong("DailyDay",dailyDay.getOrDefault(e.getKey(),-1L));
                 ListTag finished=new ListTag();
                 for(String task:dailyCompleted.getOrDefault(e.getKey(),java.util.Set.of())){
@@ -648,6 +688,13 @@ public final class Masterki {
                 saved.huntDay.put(uuid,u.getLong("HuntDay"));
                 saved.bossesToday.put(uuid,u.getInt("BossHunts"));
                 saved.bossDay.put(uuid,u.contains("BossHuntDay")?u.getLong("BossHuntDay"):-1L);
+                saved.speciesKillDay.put(uuid,u.contains("SpeciesHuntDay")
+                    ?u.getLong("SpeciesHuntDay"):-1L);
+                CompoundTag species=u.getCompound("SpeciesKills");
+                Map<String,Integer> perSpecies=new HashMap<>();
+                for(String type:species.getAllKeys())
+                    if(species.getInt(type)>0)perSpecies.put(type,species.getInt(type));
+                if(!perSpecies.isEmpty())saved.killsBySpecies.put(uuid,perSpecies);
                 saved.dailyDay.put(uuid,u.getLong("DailyDay"));
                 ListTag dailyDone=u.getList("DailyDone",Tag.TAG_COMPOUND);
                 java.util.Set<String> done=new java.util.HashSet<>();

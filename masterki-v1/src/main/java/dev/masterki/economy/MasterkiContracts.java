@@ -43,13 +43,17 @@ public final class MasterkiContracts extends SavedData {
         public String key, poolId, item, state;
         public int amount;
         public long reward, dueAt, rotation;
+        // Frozen at acceptance; old world contracts keep their original payout.
+        public long acceptedPayout;
         public boolean difficult;
         ContractEntry(String key,String poolId,String item,int amount,long reward,long rotation){
             this.key=key;this.poolId=poolId;this.item=item;this.amount=amount;
             this.reward=reward;this.rotation=rotation;this.state="available";
         }
-        MasterkiNetwork.ContractStatus view(boolean carriedOver) {
-            return new MasterkiNetwork.ContractStatus(key,item,amount,reward,state,dueAt,
+        MasterkiNetwork.ContractStatus view(boolean carriedOver,long preview) {
+            long shown="available".equals(state)?preview:
+                acceptedPayout>0?acceptedPayout:reward;
+            return new MasterkiNetwork.ContractStatus(key,item,amount,shown,state,dueAt,
                 difficult,carriedOver);
         }
     }
@@ -73,11 +77,12 @@ public final class MasterkiContracts extends SavedData {
     public long nextRotation(UUID player,long now){
         return board(player,now).nextRefresh;
     }
-    public List<MasterkiNetwork.ContractStatus> visible(UUID player,long now){
-        Board board=board(player,now);
+    public List<MasterkiNetwork.ContractStatus> visible(ServerPlayer player,long now){
+        Board board=board(player.getUUID(),now);
         ArrayList<MasterkiNetwork.ContractStatus> result=new ArrayList<>();
         for(ContractEntry entry:board.entries)
-            result.add(entry.view(entry.rotation!=board.rotation));
+            result.add(entry.view(entry.rotation!=board.rotation,
+                MasterkiDifficulty.adjusted(entry.reward,player)));
         return result;
     }
     private Board board(UUID uuid,long now){
@@ -206,6 +211,7 @@ public final class MasterkiContracts extends SavedData {
             if(e.dueAt<=now){
                 Masterki.tell(player,"Срок контракта уже истёк.",ChatFormatting.RED);return false;
             }
+            e.acceptedPayout=MasterkiDifficulty.adjusted(e.reward,player);
             e.state="accepted";setDirty();
             long remaining=(e.dueAt-now+HOUR-1)/HOUR;
             Masterki.tell(player,"Контракт принят: "+(e.difficult?"сложный":"обычный")+
@@ -241,13 +247,14 @@ public final class MasterkiContracts extends SavedData {
         if(itemCount(player,sample)<e.amount){
             Masterki.tell(player,"Недостаточно ресурсов для контракта.",ChatFormatting.RED);return false;
         }
-        if(economy.balance(uuid)>Long.MAX_VALUE-e.reward)return false;
+        long pay=e.acceptedPayout>0?e.acceptedPayout:e.reward;
+        if(economy.balance(uuid)>Long.MAX_VALUE-pay)return false;
         take(player,sample,e.amount);
         e.state="completed"; // commit the state before the reward can be paid again
-        economy.setBalance(uuid,economy.balance(uuid)+e.reward);
-        economy.log(uuid,"Контракт "+e.poolId+": +"+e.reward+" М");
+        economy.setBalance(uuid,economy.balance(uuid)+pay);
+        economy.log(uuid,"Контракт "+e.poolId+": +"+pay+" М");
         setDirty();
-        Masterki.tell(player,"Выполнено: +"+e.reward+" М",ChatFormatting.GREEN);
+        Masterki.tell(player,"Выполнено: +"+pay+" М",ChatFormatting.GREEN);
         return true;
     }
 
@@ -272,7 +279,8 @@ public final class MasterkiContracts extends SavedData {
         if(!finesEnabled||percentage<=0)return;
         Masterki.Saved economy=Masterki.Saved.of(serverLevel);
         // This hook is supplied by Masterki; it resolves the owning overworld storage.
-        long fine=Math.max(1,(entry.reward*percentage+99)/100);
+        long payout=entry.acceptedPayout>0?entry.acceptedPayout:entry.reward;
+        long fine=Math.max(1,(payout*percentage+99)/100);
         long paid=Math.min(fine,economy.balance(uuid));
         if(paid<=0)return;
         economy.setBalance(uuid,economy.balance(uuid)-paid);
@@ -382,6 +390,7 @@ public final class MasterkiContracts extends SavedData {
                 n.putString("Key",c.key);n.putString("Pool",c.poolId);n.putString("Item",c.item);
                 n.putString("State",c.state);n.putInt("Amount",c.amount);n.putLong("Reward",c.reward);
                 n.putLong("Due",c.dueAt);n.putLong("Rotation",c.rotation);
+                n.putLong("AcceptedPayout",c.acceptedPayout);
                 n.putBoolean("Difficult",c.difficult);tasks.add(n);
             }
             data.put("Entries",tasks);players.add(data);
@@ -423,6 +432,8 @@ public final class MasterkiContracts extends SavedData {
                     Math.clamp(t.getInt("Amount"),1,4096),Math.clamp(t.getLong("Reward"),1,1000000),
                     t.getLong("Rotation"));
                 c.state=t.getString("State");c.dueAt=t.getLong("Due");
+                c.acceptedPayout=t.contains("AcceptedPayout",Tag.TAG_LONG)
+                    ?Math.max(0,t.getLong("AcceptedPayout")):0L;
                 c.difficult=t.getBoolean("Difficult");b.entries.add(c);
             }
             s.boards.put(data.getUUID("UUID"),b);

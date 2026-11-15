@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.8 — TEST BUILD
+# Masterki Economy 1.0.9 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -148,3 +148,13 @@ The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Change
 - Player-specific counters are stored in the existing world SavedData `masterki_economy.dat` under `BuybackGameDay` and `BuybackUsers`. A server restart preserves the current game's per-player quota.
 - Upgrade from 1.0.7: the old shared `Buybacks` count cannot be attributed fairly to particular UUIDs, so it is not migrated; everyone's **buyback quota alone** starts fresh on their first attempt to sell in 1.0.8. Existing balances, historical transactions, stocks, contracts, daily tasks, hunting data, configs and unrelated economy fields are retained.
 - Only the buyback quota's scope and reset clock change. Contract renewal, daily tasks and hunting use the previously configured real-world 05:00 server time, unchanged.
+
+## v1.0.9 — quick sales, contract HUD, individual hunt economy, Apotheosis tiers
+
+- The `Магазин` tab displays a single **Buy** button, and the `Продажа` tab displays only **Sell 1** and **Sell N**. Transaction controls do not appear in other tabs. The current tab's subtotal is shown before the server validates and processes the transaction. Sell rewards have no bulk discount; purchase bulk discounts remain unchanged.
+- A new `hud_contracts` indicator shows the first three active contracts, resource counts **calculated from the player's actual 36 main inventory slots each frame**, a progress bar, current fixed payout, and deadline. More accepted contracts are counted below. The client notifies when all resources are present; the server remains authoritative on completion. The indicator is movable, scalable, and toggleable in existing `/masterki dev edit` and related `/masterki dev layout` commands. Server state snapshots sync every five seconds and on economy actions.
+- Hunting caps are now per **UUID and species key** (with charged creepers counted as their own variant). Vanilla examples: zombie 15M/12 daily, skeleton 20M/10, creeper **40M/5**, charged creeper **80M/5**, witch 50M/5; each boss has independent limits (Wither 450M/2, Warden 650M/1, Ender Dragon 550M/1). Most unlisted hostile mobs receive 20M/8; all payouts multiply by the actual killer's Apotheosis tier.
+- **Optional Apotheosis 1.21 integration** reads the player's real `apotheosis:world_tier` NeoForge data attachment through the registry: Haven x1, Frontier x1.15, Ascent x1.30, Summit x1.50, Pinnacle x1.75. No classes from Apotheosis are linked, so the module remains usable without it (x1). Values are deliberately moderate and configurable in future versions.
+- Tier multipliers affect completed hunts, contracts, three daily jobs, first-time achievements, and exploration rewards. Contract reward is **frozen when accepted** and persisted to avoid switching tiers immediately before turning in a valuable contract; existing accepted contracts with no frozen reward preserve their original 1.0.8 amount. Shop item prices remain identical for all players.
+- Per-species hunt statistics persist in `masterki_economy` SavedData and reset at the **existing real-world 05:00 Ufa** boundary, independent of the 24,000-tick personal shop sell limits. Old aggregate hunt counters remain stored for compatibility, but do not affect the new species-separated caps.
+- This is still a development build. Run client/server multiplayer trials with **the matching Apotheosis 1.21.1 release** to confirm the tier registry from a full modpack.
