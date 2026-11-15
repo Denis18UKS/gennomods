@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.10 — TEST BUILD
+# Masterki Economy 1.0.11 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -170,3 +170,9 @@ The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Change
 - All species-specific hunting limits, Apotheosis tier payouts, calendar-rotation deadlines, per-player game-day sell limits, and old admin commands remain unchanged.
 
 **Deployment:** install exactly the same v1.0.10 JAR on both client and server, replacing v1.0.9; do not delete saved world files. Full multiplayer GUI tests, balance persistence after repeated server restarts, and integration with a particular installed Apotheosis modpack still need in-game verification.
+
+## v1.0.11 — Contract paging regression hotfix
+
+- Fixed the contract GUI unexpectedly jumping back to page 2 during periodic server snapshots. Previously, `ShopScreen.filter()` clamped **all tabs** to the number of *filtered shop product pages*, even when the player was browsing pages of contracts. Contract pages now use the actual contract count and 5 rows/page; daily-task pages use 8 rows/page; shop/sell tabs use 15 items/page.
+- Page navigation and incoming snapshot refreshes share the same tab-specific `maxPageForCurrentTab()` boundary. The current page is preserved while browsing unless its content genuinely disappears.
+- No changes to player balances, SavedData, contract rotation, trade prices, hunter payouts, or Apotheosis integration. Replace the existing client **and server** v1.0.10 JAR with the matching v1.0.11 JAR.

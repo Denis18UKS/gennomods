@@ -94,14 +94,31 @@ public final class ShopScreen extends Screen {
         }
         if(sortMode==1)visible.sort(java.util.Comparator.comparingLong(MasterkiNetwork.Product::buy));
         else if(sortMode==2)visible.sort(java.util.Comparator.comparingLong(MasterkiNetwork.Product::buy).reversed());
-        int maxPage=Math.max(0,(visible.size()-1)/15);
-        page=Math.max(0,Math.min(page,maxPage));
+        // Never clamp contract/daily pages against the filtered shop catalogue.
+        // The server sends periodic snapshots even while browsing contracts.
+        page=Math.max(0,Math.min(page,maxPageForCurrentTab()));
         if(selected==null&&!visible.isEmpty())selected=visible.get(0);
         else if(selected!=null){
             String id=selected.id();
             selected=data.products().stream().filter(p->p.id().equals(id)).findFirst().orElse(null);
         }
     }
+    private int maxPageForCurrentTab(){
+        int count;
+        int pageSize;
+        if(tab.equals("Контракты")){
+            count=data.contracts().size();
+            pageSize=5;
+        }else if(tab.equals("Задания")){
+            count=(int)data.tasks().stream().filter(t->t.id().startsWith("daily:")).count();
+            pageSize=8;
+        }else if(tab.equals("Магазин")||tab.equals("Продажа")){
+            count=visible.size();
+            pageSize=15;
+        }else return 0;
+        return Math.max(0,(count-1)/pageSize);
+    }
+
     private static ItemStack stack(String id){
         ResourceLocation resource=ResourceLocation.tryParse(id);
         if(resource==null||!BuiltInRegistries.ITEM.containsKey(resource))return ItemStack.EMPTY;
@@ -459,10 +476,12 @@ public final class ShopScreen extends Screen {
             if("Избранное".equals(category))filter();
             return true;
         }
-        if(x>=340&&x<505&&y>=427&&y<450){
-            if(x<393)page=Math.max(0,page-1);else if(x>452)page++;
-            int count=tab.equals("Контракты")||tab.equals("Задания")?tasksForTab().size():visible.size();
-            page=Math.min(page,Math.max(0,(count-1)/(tab.equals("Контракты")?5:tab.equals("Задания")?8:15)));
+        if((tab.equals("Магазин")||tab.equals("Продажа")||
+            tab.equals("Контракты")||tab.equals("Задания"))
+            &&x>=340&&x<505&&y>=427&&y<450){
+            if(x<393)page=Math.max(0,page-1);
+            else if(x>452)page++;
+            page=Math.min(page,maxPageForCurrentTab());
             return true;
         }
         if((tab.equals("Магазин")||tab.equals("Продажа"))&&selected!=null
