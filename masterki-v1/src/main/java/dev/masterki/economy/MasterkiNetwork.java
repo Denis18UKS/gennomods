@@ -17,6 +17,10 @@ public final class MasterkiNetwork {
     public record ContractStatus(String id,String item,int amount,long reward,String status,long deadline,
                                  boolean difficult,boolean carriedOver){}
     public record LayoutEntry(String id,int x,int y,int scale,boolean visible){}
+    public record BonusStatus(long rotation,int total,int completed,boolean failed,
+                              boolean paid,long reward){}
+    public record ContractArchive(String item,int amount,long reward,String state,
+                                  long finishedAt){}
 
     public record Action(String kind,String id,int count) implements CustomPacketPayload{
         public static final Type<Action> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("masterki","action"));
@@ -54,7 +58,8 @@ public final class MasterkiNetwork {
 
     public record Snapshot(boolean open,String tab,long balance,long nextRestock,
                            List<Product> products,List<Task> tasks,List<String> history,List<LayoutEntry> layout,
-                           long nextContracts,long dailyReset,List<ContractStatus> contracts,List<String> dailyDone,String scheduleZone)
+                           long nextContracts,long dailyReset,List<ContractStatus> contracts,List<String> dailyDone,
+                           List<BonusStatus> bonuses,List<ContractArchive> archived,String scheduleZone)
             implements CustomPacketPayload {
         public static final Type<Snapshot> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("masterki","state"));
         public static final StreamCodec<RegistryFriendlyByteBuf,Snapshot> CODEC=StreamCodec.of(
@@ -81,6 +86,17 @@ public final class MasterkiNetwork {
                 for(ContractStatus entry:p.contracts){buf.writeUtf(entry.id(),48);buf.writeUtf(entry.item(),128);buf.writeVarInt(entry.amount());buf.writeLong(entry.reward());buf.writeUtf(entry.status(),24);buf.writeLong(entry.deadline());buf.writeBoolean(entry.difficult());buf.writeBoolean(entry.carriedOver());}
                 buf.writeVarInt(p.dailyDone.size());
                 for(String key:p.dailyDone)buf.writeUtf(key,48);
+                buf.writeVarInt(p.bonuses.size());
+                for(BonusStatus bonus:p.bonuses){
+                    buf.writeLong(bonus.rotation());buf.writeVarInt(bonus.total());
+                    buf.writeVarInt(bonus.completed());buf.writeBoolean(bonus.failed());
+                    buf.writeBoolean(bonus.paid());buf.writeLong(bonus.reward());
+                }
+                buf.writeVarInt(p.archived.size());
+                for(ContractArchive h:p.archived){
+                    buf.writeUtf(h.item(),128);buf.writeVarInt(h.amount());buf.writeLong(h.reward());
+                    buf.writeUtf(h.state(),24);buf.writeLong(h.finishedAt());
+                }
                 buf.writeUtf(p.scheduleZone(),64);
             },
             buf->{
@@ -99,7 +115,7 @@ public final class MasterkiNetwork {
                 for(int i=0;i<layoutCount;i++)layout.add(new LayoutEntry(
                     buf.readUtf(64),buf.readInt(),buf.readInt(),buf.readVarInt(),buf.readBoolean()));
                 long nextContracts=buf.readLong(), dailyReset=buf.readLong();
-                int number=Math.min(128,buf.readVarInt());
+                int number=Math.min(256,buf.readVarInt());
                 List<ContractStatus> contracts=new ArrayList<>(number);
                 for(int i=0;i<number;i++)contracts.add(new ContractStatus(buf.readUtf(48),
                     buf.readUtf(128),buf.readVarInt(),buf.readLong(),buf.readUtf(24),buf.readLong(),
@@ -107,7 +123,19 @@ public final class MasterkiNetwork {
                 int count=Math.min(64,buf.readVarInt());
                 List<String> dailyDone=new ArrayList<>(count);
                 for(int i=0;i<count;i++)dailyDone.add(buf.readUtf(48));
-                return new Snapshot(open,tab,balance,next,rows,tasks,history,layout,nextContracts,dailyReset,contracts,dailyDone,buf.readUtf(64));
+                int bonusCount=buf.readVarInt();
+                if(bonusCount<0||bonusCount>16)throw new IllegalArgumentException("Bad bonus count");
+                List<BonusStatus> bonuses=new ArrayList<>(bonusCount);
+                for(int i=0;i<bonusCount;i++)bonuses.add(new BonusStatus(
+                    buf.readLong(),buf.readVarInt(),buf.readVarInt(),buf.readBoolean(),
+                    buf.readBoolean(),buf.readLong()));
+                int archiveCount=buf.readVarInt();
+                if(archiveCount<0||archiveCount>80)throw new IllegalArgumentException("Bad archive size");
+                List<ContractArchive> archived=new ArrayList<>(archiveCount);
+                for(int i=0;i<archiveCount;i++)archived.add(new ContractArchive(
+                    buf.readUtf(128),buf.readVarInt(),buf.readLong(),buf.readUtf(24),buf.readLong()));
+                return new Snapshot(open,tab,balance,next,rows,tasks,history,layout,
+                    nextContracts,dailyReset,contracts,dailyDone,bonuses,archived,buf.readUtf(64));
             });
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }

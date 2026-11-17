@@ -359,7 +359,8 @@ public final class Masterki {
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
             List.of(),tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
             rotation.nextRotation(p.getUUID(),now),MasterkiSchedule.nextCutoff(now),
-            rotation.visible(p,now),dailyDone,MasterkiSchedule.zone().getId()));
+            rotation.visible(p,now),dailyDone,rotation.bonuses(p,now),
+            rotation.archive(p.getUUID(),now),MasterkiSchedule.zone().getId()));
         if(open)sendCatalog(p,data);
     }
 

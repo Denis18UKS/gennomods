@@ -30,7 +30,7 @@ public final class ShopScreen extends Screen {
     private static final String[] CATEGORIES={"Ресурсы","Create","Инструменты","Строительство","Еда и фермы","Редкости","Другие моды","Избранное"};
     private MasterkiNetwork.Snapshot data;
     private String tab="Магазин",category="Ресурсы",search="";
-    private int page=0,qty=64,chosen=0,focus=0,sortMode=0;
+    private int page=0,qty=64,chosen=0,focus=0,sortMode=0,viewedBatch=0;
     private boolean onlyStock=false;
     private boolean searching=false;
     private String pendingExpiringContract="";
@@ -267,6 +267,22 @@ public final class ShopScreen extends Screen {
             long reset=daily?data.dailyReset():data.nextContracts();
             text(g,"Обновление: "+deadlineLabel(reset)+" · "+remaining(reset),
                 28,151,0xFFD3BCA3);
+            if(!daily&&!data.bonuses().isEmpty()){
+                int index=Math.floorMod(viewedBatch,data.bonuses().size());
+                var batch=data.bonuses().get(index);
+                String line="Партия #"+batch.rotation()+" · "+batch.completed()+"/"+batch.total()+
+                    "   ["+(index+1)+"/"+data.bonuses().size()+"]  ▶";
+                text(g,line,470,134,GOLD);
+                String rewardStatus=batch.paid()?"ПРЕМИЯ ВЫПЛАЧЕНА":
+                    batch.failed()?"Премия утрачена":
+                    "Премия за все: +"+format(batch.reward())+" М";
+                text(g,rewardStatus,470,151,
+                    batch.failed()?RED:batch.paid()?GREEN:LIGHT);
+                int done=Math.max(0,Math.min(390,
+                    (int)(390L*batch.completed()/Math.max(1,batch.total()))));
+                g.fill(470,164,860,168,0xFF4B3022);
+                g.fill(470,164,470+done,168,batch.failed()?RED:GREEN);
+            }
             if(!daily && pendingExpiringUntil>System.currentTimeMillis())
                 text(g,"До истечения контракта мало времени! Нажмите «Принять» ещё раз.",28,162,RED);
             List<MasterkiNetwork.Task> rows=tasksForTab();
@@ -292,7 +308,7 @@ public final class ShopScreen extends Screen {
                         612,yy+22,0xFFC2A58C);
                     if(state!=null){
                         String type=state.difficult()?"Сложный":"Обычный";
-                        String descriptor=type+" · "+statusLabel(code)+(state.carriedOver()?" (2-й день)":"");
+                        String descriptor=type+" · "+statusLabel(code)+(state.carriedOver()?" (из прошлой партии)":"");
                         text(g,shorten(descriptor,55),56,yy+20,
                             "completed".equals(code)?GREEN:0xFFD7B990);
                         boolean nearDeadline=state.deadline()-System.currentTimeMillis()<2L*3600*1000
@@ -316,9 +332,24 @@ public final class ShopScreen extends Screen {
             }
         } else if(tab.equals("История")){
             text(g,"ИСТОРИЯ ОПЕРАЦИЙ",28,137,GOLD);
-            for(int i=0;i<Math.min(16,data.history().size());i++)
-                text(g,shorten(data.history().get(i),105),28,163+i*17,0xFFEAD2AE);
+            for(int i=0;i<Math.min(13,data.history().size());i++)
+                text(g,shorten(data.history().get(i),66),28,165+i*20,0xFFEAD2AE);
             if(data.history().isEmpty())text(g,"Операций пока не было",28,170,0xFFBFA58C);
+            g.fill(453,133,454,440,0xFF86572A);
+            text(g,"АРХИВ КОНТРАКТОВ",470,137,GOLD);
+            for(int i=0;i<Math.min(13,data.archived().size());i++){
+                var c=data.archived().get(i);
+                ItemStack item=stack(c.item());
+                String name=item.isEmpty()?c.item():item.getHoverName().getString();
+                String state=statusLabel(c.state());
+                text(g,shorten(name,30)+" ×"+c.amount(),471,165+i*20,LIGHT);
+                text(g,shorten(state+" · "+deadlineLabel(c.finishedAt()),37),
+                    683,165+i*20,
+                    "completed".equals(c.state())?GREEN:
+                    "expired".equals(c.state())?0xFFC3AE98:RED);
+            }
+            if(data.archived().isEmpty())
+                text(g,"Архив появится после первой ротации",470,170,0xFFBFA58C);
         } else {
             text(g,"НАСТРОЙКИ ОТОБРАЖЕНИЯ",28,137,GOLD);
             button(g,28,174,475,38,"Мини-HUD баланса: "+(ClientEconomy.showHud?"ВКЛ":"ВЫКЛ"),true,LIGHT);
@@ -412,7 +443,14 @@ public final class ShopScreen extends Screen {
         if(x>=856&&y>=11&&x<890&&y<63){onClose();return true;}
         if(y>=77&&y<117){
             int[] starts={10,160,310,460,610,760};
-            for(int i=0;i<6;i++)if(x>=starts[i]&&x<starts[i]+142){tab=TABS[i];page=0;return true;}
+            for(int i=0;i<6;i++)if(x>=starts[i]&&x<starts[i]+142){
+                tab=TABS[i];page=0;viewedBatch=0;return true;
+            }
+        }
+        if(tab.equals("Контракты")&&x>=470&&x<860&&y>=130&&y<170
+            &&!data.bonuses().isEmpty()){
+            viewedBatch=(viewedBatch+1)%data.bonuses().size();
+            return true;
         }
         if((tab.equals("Магазин")||tab.equals("Продажа"))
             &&x>=18&&x<171&&y>=157&&y<157+CATEGORIES.length*36){

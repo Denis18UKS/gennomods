@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.11 — TEST BUILD
+# Masterki Economy 1.0.12 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -176,3 +176,15 @@ The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Change
 - Fixed the contract GUI unexpectedly jumping back to page 2 during periodic server snapshots. Previously, `ShopScreen.filter()` clamped **all tabs** to the number of *filtered shop product pages*, even when the player was browsing pages of contracts. Contract pages now use the actual contract count and 5 rows/page; daily-task pages use 8 rows/page; shop/sell tabs use 15 items/page.
 - Page navigation and incoming snapshot refreshes share the same tab-specific `maxPageForCurrentTab()` boundary. The current page is preserved while browsing unless its content genuinely disappears.
 - No changes to player balances, SavedData, contract rotation, trade prices, hunter payouts, or Apotheosis integration. Replace the existing client **and server** v1.0.10 JAR with the matching v1.0.11 JAR.
+
+## v1.0.12 — reliable daily contracts, 3-day difficult orders and whole-board bonus
+
+- Every schedule boundary at **05:00 Asia/Yekaterinburg** produces a FRESH batch of up to **40** orders. Only still-valid **accepted** orders survive subsequent daily rotations. They appear after the new orders. Expired available offers, completed, canceled, or overdue orders leave the active board and move into a persistent contract archive; overdue accepted orders are fined once.
+- New **difficult** and rare contracts expire at the **third** daily schedule boundary after issue (3 days, e.g., issued Nov 17, deadline Nov 20 at 05:00). Regular offers expire at the very next daily boundary. Existing accepted contracts keep their frozen deadlines and payouts.
+- **Bonus for completing an entire 40-order batch:** one-time additional **15% of the sum of the original batch's order payouts minus 13% shop commission on the bonus alone**, net `floor(sum * 1305 / 10000)`. For 100,000 Masterki across a batch, the bonus is **13,050 Masterki**, total **113,050 Masterki** including contract payouts. Actual Apotheosis-adjusted accepted payouts contribute to the stored batch total. Every contract must be completed successfully; any canceled, expired or overdue order forfeits that batch's bonus. A batch may remain eligible when its accepted difficult orders carry over for up to three days; incoming daily rotations do NOT reset its progress.
+- Batch completion, cancellation, fines, frozen payout totals, the paid flag, and up to 160 archived contract outcomes per player are persisted inside `masterki_contracts` SavedData, with backward-compatible default values for older worlds. A player with 40 already-issued orders from v1.0.11 has the current board's progress recovered without double-paying an already-completed batch. Historical orders from prior versions that no longer exist in the world cannot be retroactively reconstructed.
+- Contract GUI shows the completion counter, net bonus and failure/paid status for a batch. Click the displayed batch summary to cycle among the three most recent tracked batches. The **История** tab now displays both financial transactions and an archive of completed, expired, canceled or overdue contracts.
+- Admin-only **`/masterki admin contracts refresh`** removes ONLY expired/overdue contracts from all stored player boards, archiving them and applying any overdue fine only once. It doesn't reroll, doesn't produce more contracts, doesn't change today's unexpired issued offers, doesn't shorten accepted difficult contracts, and doesn't change the scheduled 05:00 rotation. (Players already online may independently be naturally rotated by their normal periodic sync after 05:00.)
+- The existing developer `/masterki dev contracts reroll` remains an explicit cheat/test command, separate from safe admin cleanup.
+- No changes to trading, per-player sell limits, hunt species caps, balances or difficulty coefficients. Install the same 1.0.12 JAR on both client/server; **back up the world first**, and do not delete the world or config directory.
+- Compilation and server smoke testing by GitHub Actions do not replace an in-game verification of GUI rendering, three-day rotation behavior, and multiplayer persistence.

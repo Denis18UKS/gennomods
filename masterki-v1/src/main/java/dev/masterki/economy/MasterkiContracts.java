@@ -32,6 +32,11 @@ public final class MasterkiContracts extends SavedData {
     private static final long HOUR = 3_600_000L;
     private static final long TWO_HOURS = 2 * HOUR;
     private static final int MAX_LOG = 64;
+    private static final int MAX_ARCHIVE = 160;
+    private static final int CONTRACTS_PER_DAY = 40;
+    // 15% of the whole batch minus 13% shop commission = 13.05% net.
+    private static final long BONUS_NUMERATOR = 1305L;
+    private static final long BONUS_DENOMINATOR = 10000L;
     private final Map<UUID, Board> boards = new HashMap<>();
     private final Map<UUID, List<Fine>> fineHistory = new HashMap<>();
     private int latePercent = 10;
@@ -46,6 +51,7 @@ public final class MasterkiContracts extends SavedData {
         public long reward, dueAt, rotation;
         // Frozen at acceptance; old world contracts keep their original payout.
         public long acceptedPayout;
+        public long closedAt;
         public boolean difficult;
         ContractEntry(String key,String poolId,String item,int amount,long reward,long rotation){
             this.key=key;this.poolId=poolId;this.item=item;this.amount=amount;
@@ -64,7 +70,25 @@ public final class MasterkiContracts extends SavedData {
         long cycleDay=Long.MIN_VALUE;
         List<String> previous = new ArrayList<>();
         List<ContractEntry> entries = new ArrayList<>();
+        final Map<Long,BonusBatch> batches=new HashMap<>();
+        final List<Archived> archived=new ArrayList<>();
     }
+    /** Progress belongs to the original contract rotation, even after new daily offers. */
+    private static final class BonusBatch {
+        final long rotation;
+        final long cycleDay;
+        final int size;
+        int completed;
+        int failed;
+        long totalReward;
+        boolean paid;
+        BonusBatch(long rotation,long cycleDay,int size,long totalReward){
+            this.rotation=rotation;this.cycleDay=cycleDay;this.size=size;
+            this.totalReward=totalReward;
+        }
+        long bonus(){return Math.max(0,totalReward)*BONUS_NUMERATOR/BONUS_DENOMINATOR;}
+    }
+    private record Archived(String item,int amount,long reward,String state,long finishedAt,long rotation) {}
     private record Fine(long epoch,String cause,long amount) {}
 
     private MasterkiContracts() {}
@@ -82,9 +106,26 @@ public final class MasterkiContracts extends SavedData {
         Board board=board(player.getUUID(),now);
         ArrayList<MasterkiNetwork.ContractStatus> result=new ArrayList<>();
         for(ContractEntry entry:board.entries)
-            result.add(entry.view(entry.rotation!=board.rotation,
-                MasterkiDifficulty.adjusted(entry.reward,player)));
+            if(!"overdue".equals(entry.state) && !"expired".equals(entry.state))
+                result.add(entry.view(entry.rotation!=board.rotation,
+                    MasterkiDifficulty.adjusted(entry.reward,player)));
         return result;
+    }
+    public List<MasterkiNetwork.BonusStatus> bonuses(ServerPlayer player,long now){
+        Board board=board(player.getUUID(),now);
+        ArrayList<MasterkiNetwork.BonusStatus> result=new ArrayList<>();
+        board.batches.values().stream()
+            .sorted((a,b)->Long.compare(b.rotation,a.rotation))
+            .limit(3).forEach(batch->result.add(new MasterkiNetwork.BonusStatus(
+                batch.rotation,batch.size,batch.completed,batch.failed>0,batch.paid,
+                batch.bonus())));
+        return result;
+    }
+    public List<MasterkiNetwork.ContractArchive> archive(UUID uuid,long now){
+        Board board=board(uuid,now);
+        return board.archived.stream().limit(80)
+            .map(c->new MasterkiNetwork.ContractArchive(c.item,c.amount,c.reward,
+                c.state,c.finishedAt)).toList();
     }
     private Board board(UUID uuid,long now){
         // One-time 1.0.10 migration: reprice only UNACCEPTED offers.
@@ -107,10 +148,51 @@ public final class MasterkiContracts extends SavedData {
         if(b.cycleDay!=current){
             // Expire BEFORE removing an old rotation. Offline players are charged once.
             expire(uuid,b,now);
-            rotate(b,current);
+            rotate(uuid,b,current,now);
         }
         expire(uuid,b,now);
+        // v1.0.11 worlds may have received today's batch before the upgrade.
+        recoverCurrentBatch(b);
         return b;
+    }
+    private void recoverCurrentBatch(Board b){
+        if(b.batches.containsKey(b.rotation))return;
+        List<ContractEntry> current=b.entries.stream()
+            .filter(e->e.rotation==b.rotation).toList();
+        if(current.size()!=CONTRACTS_PER_DAY)return;
+        long total=0;
+        for(ContractEntry e:current)total+=e.acceptedPayout>0?e.acceptedPayout:e.reward;
+        BonusBatch batch=new BonusBatch(b.rotation,b.cycleDay,current.size(),total);
+        for(ContractEntry e:current){
+            if("completed".equals(e.state))batch.completed++;
+            else if("cancelled".equals(e.state)||"overdue".equals(e.state)
+                ||"expired".equals(e.state))batch.failed++;
+        }
+        // Do not give a retroactive second payment for an already finished board.
+        if(batch.completed==batch.size)batch.paid=true;
+        b.batches.put(batch.rotation,batch);
+        setDirty();
+    }
+    private void failBatch(Board board,ContractEntry entry){
+        BonusBatch batch=board.batches.get(entry.rotation);
+        if(batch!=null)batch.failed++;
+        setDirty();
+    }
+    private void retire(Board board,ContractEntry entry,long now){
+        String finalState="available".equals(entry.state)?"expired":entry.state;
+        if("available".equals(entry.state))failBatch(board,entry);
+        long paid=entry.acceptedPayout>0?entry.acceptedPayout:entry.reward;
+        board.archived.add(0,new Archived(entry.item,entry.amount,paid,
+            finalState,entry.closedAt>0?entry.closedAt:now,entry.rotation));
+        if(board.archived.size()>MAX_ARCHIVE)
+            board.archived.subList(MAX_ARCHIVE,board.archived.size()).clear();
+        setDirty();
+    }
+    private void pruneOldBatches(Board board,long cycle){
+        board.batches.entrySet().removeIf(entry->
+            entry.getValue().cycleDay<cycle-10
+            && board.entries.stream().noneMatch(e->e.rotation==entry.getKey()));
+        setDirty();
     }
     private boolean classify(String item,int amount){
         // Complexity uses the real configured market price and quantity,
@@ -147,18 +229,19 @@ public final class MasterkiContracts extends SavedData {
         for(ContractEntry entry:board.entries){
             if("accepted".equals(entry.state) && entry.dueAt>0 && now>=entry.dueAt){
                 entry.state="overdue";
+                entry.closedAt=now;
+                failBatch(board,entry);
                 fine(uuid,entry,"Просрочка контракта "+entry.poolId,latePercent);
                 setDirty();
             }
         }
     }
-    private void rotate(Board board,long cycle){
+    private void rotate(UUID uuid,Board board,long cycle,long now){
         List<ContractEntry> retained=new ArrayList<>();
         for(ContractEntry entry:board.entries){
-            // Complex accepted contracts survive exactly one daily renewal.
-            if("accepted".equals(entry.state) ||
-                ("overdue".equals(entry.state) && entry.rotation==board.rotation))
+            if("accepted".equals(entry.state)&&entry.dueAt>now)
                 retained.add(entry);
+            else retire(board,entry,now);
         }
         List<Masterki.Contract> pool=new ArrayList<>(Masterki.contracts());
         pool.removeIf(c->!MasterkiCatalogPolicy.allowed(c.item()));
@@ -171,20 +254,20 @@ public final class MasterkiContracts extends SavedData {
         }
         List<Masterki.Contract> picked=new ArrayList<>();
         for(Masterki.Contract c:pool){
-            if(picked.size()>=40)break;
+            if(picked.size()>=CONTRACTS_PER_DAY)break;
             if(!previousVariants.containsKey(c.id()))picked.add(c);
         }
         for(Masterki.Contract c:pool){
-            if(picked.size()>=40)break;
+            if(picked.size()>=CONTRACTS_PER_DAY)break;
             if(picked.stream().noneMatch(p->p.id().equals(c.id())))picked.add(c);
         }
         board.rotation++;
         board.cycleDay=cycle;
         board.previous.clear();
         board.entries.clear();
-        board.entries.addAll(retained);
         int[] variants={75,100,125,150};
-        long first=MasterkiSchedule.cutoff(cycle,1),second=MasterkiSchedule.cutoff(cycle,2);
+        long first=MasterkiSchedule.cutoff(cycle,1),third=MasterkiSchedule.cutoff(cycle,3);
+        long batchTotal=0;
         for(Masterki.Contract c:picked){
             int prior=previousVariants.getOrDefault(c.id(),-1);
             int variant=variants[ThreadLocalRandom.current().nextInt(variants.length)];
@@ -197,11 +280,17 @@ public final class MasterkiContracts extends SavedData {
             ContractEntry entry=new ContractEntry("r"+board.rotation+"_"+c.id(),
                 c.id(),c.item(),amount,reward,board.rotation);
             entry.difficult=classify(c.item(),amount);
-            entry.dueAt=entry.difficult?second:first;
+            entry.dueAt=entry.difficult?third:first;
             board.previous.add(c.id()+":"+variant);
             board.entries.add(entry);
+            batchTotal+=reward;
         }
+        // Today's 40 appear first; still-active older three-day jobs come after them.
+        board.entries.addAll(retained);
+        board.batches.put(board.rotation,
+            new BonusBatch(board.rotation,cycle,picked.size(),batchTotal));
         board.nextRefresh=first;
+        pruneOldBatches(board,cycle);
         setDirty();
     }
 
@@ -224,6 +313,8 @@ public final class MasterkiContracts extends SavedData {
                 Masterki.tell(player,"Срок контракта уже истёк.",ChatFormatting.RED);return false;
             }
             e.acceptedPayout=MasterkiDifficulty.adjusted(e.reward,player);
+            BonusBatch batch=b.batches.get(e.rotation);
+            if(batch!=null)batch.totalReward+=e.acceptedPayout-e.reward;
             e.state="accepted";setDirty();
             long remaining=(e.dueAt-now+HOUR-1)/HOUR;
             Masterki.tell(player,"Контракт принят: "+(e.difficult?"сложный":"обычный")+
@@ -235,6 +326,8 @@ public final class MasterkiContracts extends SavedData {
         if("cancel".equals(verb)){
             if(!"accepted".equals(e.state)){Masterki.tell(player,"Этот контракт нельзя отменить.",ChatFormatting.RED);return false;}
             e.state="cancelled";
+            e.closedAt=now;
+            failBatch(b,e);
             fine(uuid,e,"Отмена контракта "+e.poolId,cancelPercent);
             setDirty();
             Masterki.tell(player,"Контракт отменён.",ChatFormatting.YELLOW);return true;
@@ -260,13 +353,33 @@ public final class MasterkiContracts extends SavedData {
             Masterki.tell(player,"Недостаточно ресурсов для контракта.",ChatFormatting.RED);return false;
         }
         long pay=e.acceptedPayout>0?e.acceptedPayout:e.reward;
-        if(economy.balance(uuid)>Long.MAX_VALUE-pay)return false;
+        BonusBatch batch=b.batches.get(e.rotation);
+        boolean finishesBatch=batch!=null&&!batch.paid&&batch.failed==0
+            &&batch.completed==batch.size-1&&batch.size>0;
+        long premium=finishesBatch?batch.bonus():0L;
+        // Check total before taking the items: no partial payment on overflow.
+        if(pay<0||premium<0||pay>Long.MAX_VALUE-premium
+            ||economy.balance(uuid)>Long.MAX_VALUE-pay-premium){
+            Masterki.tell(player,"Баланс слишком велик для начисления награды.",ChatFormatting.RED);
+            return false;
+        }
         take(player,sample,e.amount);
-        e.state="completed"; // commit the state before the reward can be paid again
-        economy.setBalance(uuid,economy.balance(uuid)+pay);
+        e.state="completed"; // commit state before any payment
+        e.closedAt=now;
+        if(batch!=null){
+            batch.completed++;
+            if(finishesBatch)batch.paid=true;
+        }
+        economy.setBalance(uuid,economy.balance(uuid)+pay+premium);
         economy.log(uuid,"Контракт "+e.poolId+": +"+pay+" М");
+        if(finishesBatch)
+            economy.log(uuid,"Премия за партию "+e.rotation+": +"+premium+
+                " М (15% минус 13% комиссии)");
         setDirty();
         Masterki.tell(player,"Выполнено: +"+pay+" М",ChatFormatting.GREEN);
+        if(finishesBatch)
+            Masterki.tell(player,"Вся партия "+e.rotation+" закрыта! Премия: +"+
+                premium+" М (15% от суммы, комиссия 13%).",ChatFormatting.GOLD);
         return true;
     }
 
@@ -308,8 +421,32 @@ public final class MasterkiContracts extends SavedData {
     }
     public int reroll(UUID uuid,long now) {
         Board b=board(uuid,now);
-        rotate(b,MasterkiSchedule.cycleDay(now));
+        expire(uuid,b,now);
+        rotate(uuid,b,MasterkiSchedule.cycleDay(now),now);
         return b.entries.size();
+    }
+    /**
+     * ADMIN: cleanup only. No reroll, no new batch, no changes to today's
+     * still-valid offers or accepted carry-over.
+     */
+    public int refreshExpired(long now){
+        int count=0;
+        for(var pair:boards.entrySet()){
+            UUID uuid=pair.getKey();
+            Board b=pair.getValue();
+            expire(uuid,b,now);
+            for(var it=b.entries.iterator();it.hasNext();){
+                ContractEntry e=it.next();
+                if("overdue".equals(e.state) ||
+                    ("available".equals(e.state)&&e.dueAt>0&&e.dueAt<=now)){
+                    retire(b,e,now);
+                    it.remove();
+                    count++;
+                }
+            }
+        }
+        if(count>0)setDirty();
+        return count;
     }
     public void reset(UUID uuid){
         boards.remove(uuid);setDirty();
@@ -342,6 +479,18 @@ public final class MasterkiContracts extends SavedData {
         return 1;
     }
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher){
+        dispatcher.register(Commands.literal("masterki")
+            .then(Commands.literal("admin").requires(s->s.hasPermission(2))
+                .then(Commands.literal("contracts")
+                    .then(Commands.literal("refresh").executes(c->{
+                        MasterkiContracts data=of(c.getSource().getLevel());
+                        int count=data.refreshExpired(System.currentTimeMillis());
+                        for(ServerPlayer player:c.getSource().getServer().getPlayerList().getPlayers())
+                            Masterki.sync(player,false,"");
+                        info(c.getSource(),"Очистка завершена: убрано просроченных контрактов "+
+                            count+". Сегодняшняя ротация и действующие сложные заказы сохранены.");
+                        return count>0?count:1;
+                    })))));
         var root=Commands.literal("masterki").then(Commands.literal("dev").requires(s->s.hasPermission(2))
             .then(Commands.literal("contracts")
                 .then(Commands.literal("list")
@@ -404,9 +553,30 @@ public final class MasterkiContracts extends SavedData {
                 n.putString("State",c.state);n.putInt("Amount",c.amount);n.putLong("Reward",c.reward);
                 n.putLong("Due",c.dueAt);n.putLong("Rotation",c.rotation);
                 n.putLong("AcceptedPayout",c.acceptedPayout);
+                n.putLong("ClosedAt",c.closedAt);
                 n.putBoolean("Difficult",c.difficult);tasks.add(n);
             }
-            data.put("Entries",tasks);players.add(data);
+            data.put("Entries",tasks);
+            ListTag bonuses=new ListTag();
+            for(BonusBatch batch:board.batches.values()){
+                CompoundTag n=new CompoundTag();
+                n.putLong("Rotation",batch.rotation);n.putLong("CycleDay",batch.cycleDay);
+                n.putInt("Size",batch.size);n.putInt("Completed",batch.completed);
+                n.putInt("Failed",batch.failed);n.putLong("Total",batch.totalReward);
+                n.putBoolean("Paid",batch.paid);
+                bonuses.add(n);
+            }
+            data.put("BonusBatches",bonuses);
+            ListTag archived=new ListTag();
+            for(Archived entry:board.archived){
+                CompoundTag n=new CompoundTag();
+                n.putString("Item",entry.item);n.putInt("Amount",entry.amount);
+                n.putLong("Reward",entry.reward);n.putString("State",entry.state);
+                n.putLong("FinishedAt",entry.finishedAt);n.putLong("Rotation",entry.rotation);
+                archived.add(n);
+            }
+            data.put("ContractArchive",archived);
+            players.add(data);
         }
         tag.put("Boards",players);
         ListTag fines=new ListTag();
@@ -439,7 +609,7 @@ public final class MasterkiContracts extends SavedData {
             ListTag old=data.getList("Previous",Tag.TAG_COMPOUND);
             for(int j=0;j<old.size();j++)b.previous.add(old.getCompound(j).getString("ID"));
             ListTag tasks=data.getList("Entries",Tag.TAG_COMPOUND);
-            for(int j=0;j<tasks.size()&&j<128;j++){
+            for(int j=0;j<tasks.size()&&j<256;j++){
                 CompoundTag t=tasks.getCompound(j);
                 String key=t.getString("Key"),item=t.getString("Item");
                 if(key.length()>48||item.length()>128||key.isBlank()||item.isBlank())continue;
@@ -449,7 +619,27 @@ public final class MasterkiContracts extends SavedData {
                 c.state=t.getString("State");c.dueAt=t.getLong("Due");
                 c.acceptedPayout=t.contains("AcceptedPayout",Tag.TAG_LONG)
                     ?Math.max(0,t.getLong("AcceptedPayout")):0L;
+                c.closedAt=t.contains("ClosedAt",Tag.TAG_LONG)?t.getLong("ClosedAt"):0L;
                 c.difficult=t.getBoolean("Difficult");b.entries.add(c);
+            }
+            ListTag bonuses=data.getList("BonusBatches",Tag.TAG_COMPOUND);
+            for(int j=0;j<bonuses.size()&&j<64;j++){
+                CompoundTag n=bonuses.getCompound(j);
+                int size=Math.clamp(n.getInt("Size"),1,CONTRACTS_PER_DAY);
+                BonusBatch batch=new BonusBatch(n.getLong("Rotation"),
+                    n.getLong("CycleDay"),size,Math.max(0L,n.getLong("Total")));
+                batch.completed=Math.clamp(n.getInt("Completed"),0,size);
+                batch.failed=Math.clamp(n.getInt("Failed"),0,size);
+                batch.paid=n.getBoolean("Paid");
+                b.batches.put(batch.rotation,batch);
+            }
+            ListTag archive=data.getList("ContractArchive",Tag.TAG_COMPOUND);
+            for(int j=0;j<archive.size()&&j<MAX_ARCHIVE;j++){
+                CompoundTag n=archive.getCompound(j);
+                if(n.getString("Item").length()>128)continue;
+                b.archived.add(new Archived(n.getString("Item"),n.getInt("Amount"),
+                    n.getLong("Reward"),n.getString("State"),
+                    n.getLong("FinishedAt"),n.getLong("Rotation")));
             }
             s.boards.put(data.getUUID("UUID"),b);
         }
