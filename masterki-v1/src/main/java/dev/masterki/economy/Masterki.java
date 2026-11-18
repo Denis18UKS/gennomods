@@ -285,6 +285,7 @@ public final class Masterki {
             }))
             .then(Commands.literal("reload").executes(c->{
                 MasterkiSchedule.reload();
+                MasterkiObtainability.invalidate();
                 offers=null;
                 int size=offers().size();
                 c.getSource().sendSuccess(()->Component.literal("Masterki: загружено "+size+" товаров"),false);
@@ -350,12 +351,12 @@ public final class Masterki {
         List<MasterkiNetwork.Task> tasks=new ArrayList<>();
         long now=System.currentTimeMillis();
         List<String> dailyDone=new ArrayList<>();
-        for(Contract c:dailyTasks()){
+        MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
+        for(Contract c:rotation.dailyTasks(now)){
             tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,
                 MasterkiDifficulty.adjusted(c.reward, p)));
             if(!data.canCompleteDaily(p.getUUID(),MasterkiSchedule.cycleDay(now),c.id()))dailyDone.add(c.id());
         }
-        MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
             List.of(),tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
             rotation.nextRotation(p.getUUID(),now),MasterkiSchedule.nextCutoff(now),
@@ -405,7 +406,9 @@ public final class Masterki {
         }
         Offer offer=offers().stream().filter(o->o.id.equals(req.id())).findFirst().orElse(null);
         if("daily".equals(req.kind())){
-            Contract task=dailyTasks().stream().filter(c->c.id().equals(req.id())).findFirst().orElse(null);
+            Contract task=MasterkiContracts.of(player.serverLevel())
+                .dailyTasks(System.currentTimeMillis()).stream()
+                .filter(c->c.id().equals(req.id())).findFirst().orElse(null);
             if(task==null){tell(player,"Это задание уже недоступно.",ChatFormatting.RED);sync(player,true,"daily");return;}
             long day=MasterkiSchedule.cycleDay(System.currentTimeMillis());
             if(!data.canCompleteDaily(player.getUUID(),day,task.id())){

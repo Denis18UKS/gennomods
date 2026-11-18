@@ -1,6 +1,7 @@
 package dev.masterki.economy.client;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.ChatFormatting;
@@ -9,6 +10,7 @@ import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -32,7 +34,9 @@ public final class ShopScreen extends Screen {
     private String tab="Магазин",category="Ресурсы",search="";
     private int page=0,qty=64,chosen=0,focus=0,sortMode=0,viewedBatch=0;
     private boolean onlyStock=false;
-    private boolean searching=false;
+    private EditBox searchBox;
+    private boolean syncingSearchBox=false;
+    private final ArrayDeque<String> undoSearch=new ArrayDeque<>();
     private String pendingExpiringContract="";
     private long pendingExpiringUntil=0L;
     private float uiScale;private int px,py;
@@ -42,14 +46,74 @@ public final class ShopScreen extends Screen {
     public ShopScreen(MasterkiNetwork.Snapshot snapshot,String initialTab){
         super(Component.literal("Магазин мастерков"));
         data=snapshot;
+        var player=Minecraft.getInstance().player;
+        if(player!=null)ClientShopState.load(player.getUUID());
+        tab=ClientShopState.lastTab();
         if(initialTab.equals("contracts"))tab="Контракты";
         else if(initialTab.equals("history"))tab="История";
+        if(java.util.Arrays.stream(TABS).noneMatch(t->t.equals(tab)))tab="Магазин";
+        page=ClientShopState.page(tab);
+        category=ClientShopState.category(tab);
+        search=ClientShopState.query(tab);
     }
     public void snapshot(MasterkiNetwork.Snapshot next){this.data=next;filter();}
     @Override protected void init(){
         super.init();
         uiScale=Math.min((width-8f)/VW,(height-8f)/VH);
         px=(int)((width-VW*uiScale)/2f);py=(int)((height-VH*uiScale)/2f);
+        searchBox=this.addRenderableWidget(new EditBox(font,
+            px+Math.round(204*uiScale),py+Math.round(140*uiScale),
+            Math.max(40,Math.round(210*uiScale)),Math.max(12,Math.round(17*uiScale)),
+            Component.literal("Поиск товаров")));
+        searchBox.setMaxLength(128);
+        searchBox.setBordered(false);
+        searchBox.setTextColor(LIGHT);
+        searchBox.setCanLoseFocus(true);
+        searchBox.setResponder(this::onSearchChanged);
+        syncingSearchBox=true;
+        searchBox.setValue(search);
+        syncingSearchBox=false;
+        searchBox.setFocused(false);
+        searchBox.visible=isMarketTab();
+        filter();
+    }
+
+    private boolean isMarketTab(){
+        return tab.equals("Магазин")||tab.equals("Продажа");
+    }
+    private void setPage(int number){
+        page=Math.max(0,number);
+        ClientShopState.setPage(tab,page);
+    }
+    private void onSearchChanged(String updated){
+        if(syncingSearchBox||!isMarketTab()||updated.equals(search))return;
+        undoSearch.push(search);
+        if(undoSearch.size()>40)undoSearch.removeLast();
+        search=updated;
+        ClientShopState.setQuery(tab,search);
+        setPage(0);
+        selected=null;
+        filter();
+    }
+    private void switchTab(String newTab){
+        if(newTab.equals(tab))return;
+        ClientShopState.setPage(tab,page);
+        if(searchBox!=null)searchBox.setFocused(false);
+        this.setFocused(null);
+        tab=newTab;
+        ClientShopState.setTab(tab);
+        page=ClientShopState.page(tab);
+        category=ClientShopState.category(tab);
+        search=ClientShopState.query(tab);
+        undoSearch.clear();
+        viewedBatch=0;
+        if(searchBox!=null){
+            syncingSearchBox=true;
+            searchBox.setValue(search);
+            syncingSearchBox=false;
+            searchBox.visible=isMarketTab();
+        }
+        selected=null;
         filter();
     }
     private List<MasterkiNetwork.Task> tasksForTab(){
@@ -96,7 +160,12 @@ public final class ShopScreen extends Screen {
         else if(sortMode==2)visible.sort(java.util.Comparator.comparingLong(MasterkiNetwork.Product::buy).reversed());
         // Never clamp contract/daily pages against the filtered shop catalogue.
         // The server sends periodic snapshots even while browsing contracts.
-        page=Math.max(0,Math.min(page,maxPageForCurrentTab()));
+        // The catalogue arrives after the opening state packet. Preserve
+        // restored shop/sell positions until its chunks have arrived.
+        if(!isMarketTab()||!data.products().isEmpty()){
+            int clamped=Math.max(0,Math.min(page,maxPageForCurrentTab()));
+            if(clamped!=page)setPage(clamped);
+        }
         if(selected==null&&!visible.isEmpty())selected=visible.get(0);
         else if(selected!=null){
             String id=selected.id();
@@ -238,7 +307,8 @@ public final class ShopScreen extends Screen {
         panel(g,marketTab?186:10,123,marketTab?454:880,332,false);
         if(marketTab){
             g.fill(196,132,422,160,0xFF211611);frame(g,196,132,226,28,0xFF7A4C25);
-            text(g,"⌕ "+search+(searching&&System.currentTimeMillis()%900<450?"_":""),204,141,search.isBlank()?0xFFB5A08B:LIGHT);
+            // Native EditBox renders after the scaled custom UI. It handles
+            // selection, clipboard, arrows, Home/End and paste internally.
             button(g,429,132,94,28,onlyStock?"В наличии":"Фильтры",onlyStock,LIGHT);
             button(g,530,132,100,28,sortMode==0?"По цене ↕":sortMode==1?"Цена ↑":"Цена ↓",sortMode!=0,LIGHT);
             int offset=page*15;
@@ -412,6 +482,10 @@ public final class ShopScreen extends Screen {
         button(g,618,462,127,43,"Топ игроков",false,GOLD);
         button(g,753,462,137,43,"Помощь",false,GOLD);
         g.pose().popPose();
+        if(isMarketTab()&&searchBox!=null){
+            searchBox.visible=true;
+            searchBox.render(g,mx,my,partial);
+        }
     }
     private void labelRow(GuiGraphics g,String left,String right,int y){
         text(g,left,661,y,LIGHT);
@@ -437,6 +511,11 @@ public final class ShopScreen extends Screen {
     private float atY(double y){return (float)((y-py)/uiScale);}
     @Override public boolean mouseClicked(double mx,double my,int button){
         float x=atX(mx),y=atY(my);
+        boolean searchClick=isMarketTab()&&x>=196&&x<422&&y>=132&&y<160;
+        if(searchBox!=null && searchBox.isFocused() && !searchClick){
+            searchBox.setFocused(false);
+            this.setFocused(null);
+        }
         if(button==0&&x>=0&&x<VW&&y>=0&&y<VH)
             Minecraft.getInstance().getSoundManager().play(
                 SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK,1.0f));
@@ -444,7 +523,7 @@ public final class ShopScreen extends Screen {
         if(y>=77&&y<117){
             int[] starts={10,160,310,460,610,760};
             for(int i=0;i<6;i++)if(x>=starts[i]&&x<starts[i]+142){
-                tab=TABS[i];page=0;viewedBatch=0;return true;
+                switchTab(TABS[i]);return true;
             }
         }
         if(tab.equals("Контракты")&&x>=470&&x<860&&y>=130&&y<170
@@ -455,7 +534,11 @@ public final class ShopScreen extends Screen {
         if((tab.equals("Магазин")||tab.equals("Продажа"))
             &&x>=18&&x<171&&y>=157&&y<157+CATEGORIES.length*36){
             int index=(int)((y-157)/36);
-            if(index<CATEGORIES.length){category=CATEGORIES[index];page=0;selected=null;filter();return true;}
+            if(index<CATEGORIES.length){
+                category=CATEGORIES[index];
+                ClientShopState.setCategory(tab,category);
+                setPage(0);selected=null;filter();return true;
+            }
         }
         if(tab.equals("Настройки")&&x>=28&&x<503){
             if(y>=174&&y<212){ClientEconomy.showHud=!ClientEconomy.showHud;return true;}
@@ -496,9 +579,13 @@ public final class ShopScreen extends Screen {
             }
         }
         if(tab.equals("Магазин")||tab.equals("Продажа")){
-            if(x>=196&&x<422&&y>=132&&y<160){searching=true;return true;}
-            if(x>=429&&x<523&&y>=132&&y<160){onlyStock=!onlyStock;page=0;filter();return true;}
-            if(x>=530&&x<630&&y>=132&&y<160){sortMode=(sortMode+1)%3;page=0;filter();return true;}
+            if(searchClick && searchBox!=null){
+                this.setFocused(searchBox);
+                searchBox.setFocused(true);
+                return true;
+            }
+            if(x>=429&&x<523&&y>=132&&y<160){onlyStock=!onlyStock;setPage(0);filter();return true;}
+            if(x>=530&&x<630&&y>=132&&y<160){sortMode=(sortMode+1)%3;setPage(0);filter();return true;}
             if(x>=197&&x<=634&&y>=168&&y<423){
                 int c=(int)((x-197)/88),r=(int)((y-168)/85);
                 if(c>=0&&c<5&&r>=0&&r<3){
@@ -517,9 +604,10 @@ public final class ShopScreen extends Screen {
         if((tab.equals("Магазин")||tab.equals("Продажа")||
             tab.equals("Контракты")||tab.equals("Задания"))
             &&x>=340&&x<505&&y>=427&&y<450){
-            if(x<393)page=Math.max(0,page-1);
-            else if(x>452)page++;
-            page=Math.min(page,maxPageForCurrentTab());
+            int newPage=page;
+            if(x<393)newPage=Math.max(0,page-1);
+            else if(x>452)newPage=page+1;
+            setPage(Math.min(newPage,maxPageForCurrentTab()));
             return true;
         }
         if((tab.equals("Магазин")||tab.equals("Продажа"))&&selected!=null
@@ -546,29 +634,49 @@ public final class ShopScreen extends Screen {
                 return true;
             }
         }
-        if(x>=283&&x<610&&y>=462&&y<505){tab="Контракты";page=0;return true;}
+        if(x>=283&&x<610&&y>=462&&y<505){switchTab("Контракты");return true;}
         if(x>=618&&x<745&&y>=462&&y<505){
             PacketDistributor.sendToServer(new MasterkiNetwork.Action("top","",1));return true;
         }
         if(x>=753&&x<890&&y>=462&&y<505){
             PacketDistributor.sendToServer(new MasterkiNetwork.Action("help","",1));return true;
         }
-        searching=false;
         return super.mouseClicked(mx,my,button);
     }
     @Override public boolean keyPressed(int key,int scan,int mods){
-        if(key==GLFW.GLFW_KEY_ESCAPE){onClose();return true;}
-        if(searching){
-            if(key==GLFW.GLFW_KEY_BACKSPACE&&!search.isEmpty()){search=search.substring(0,search.length()-1);page=0;filter();return true;}
-            if(key==GLFW.GLFW_KEY_ENTER){searching=false;return true;}
+        if(searchBox!=null&&searchBox.isFocused()){
+            if(key==GLFW.GLFW_KEY_ESCAPE||key==GLFW.GLFW_KEY_ENTER||
+                key==GLFW.GLFW_KEY_KP_ENTER){
+                searchBox.setFocused(false);
+                this.setFocused(null);
+                return true;
+            }
+            // Vanilla EditBox supports Ctrl+A/C/V/X, selections, navigation.
+            // A local undo stack additionally supplies Ctrl+Z.
+            if(key==GLFW.GLFW_KEY_Z&&(mods&GLFW.GLFW_MOD_CONTROL)!=0
+                &&!undoSearch.isEmpty()){
+                String previous=undoSearch.pop();
+                syncingSearchBox=true;
+                searchBox.setValue(previous);
+                syncingSearchBox=false;
+                search=previous;
+                ClientShopState.setQuery(tab,search);
+                setPage(0);selected=null;filter();
+                return true;
+            }
+            if(searchBox.keyPressed(key,scan,mods))return true;
         }
+        if(key==GLFW.GLFW_KEY_ESCAPE){onClose();return true;}
         return super.keyPressed(key,scan,mods);
     }
     @Override public boolean charTyped(char ch,int mods){
-        if(searching&&search.length()<45&&!Character.isISOControl(ch)){
-            search+=ch;page=0;selected=null;filter();return true;
-        }
+        if(searchBox!=null&&searchBox.isFocused())
+            return searchBox.charTyped(ch,mods);
         return super.charTyped(ch,mods);
+    }
+    @Override public void onClose(){
+        ClientShopState.setPage(tab,page);
+        super.onClose();
     }
     @Override public boolean isPauseScreen(){return false;}
 }

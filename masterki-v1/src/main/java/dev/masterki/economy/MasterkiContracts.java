@@ -44,6 +44,10 @@ public final class MasterkiContracts extends SavedData {
     private int cancelPercent = 5;
     private boolean finesEnabled = true;
     private transient ServerLevel serverLevel;
+    // Three daily tasks are generated once for the 05:00 cycle and serialized.
+    // In-place repair never resets players' completed task IDs.
+    private long dailyTaskCycle=Long.MIN_VALUE;
+    private final List<Masterki.Contract> dailyOrders=new ArrayList<>();
 
     public static final class ContractEntry {
         public String key, poolId, item, state;
@@ -141,15 +145,18 @@ public final class MasterkiContracts extends SavedData {
         Board b=boards.computeIfAbsent(uuid,k->new Board());
         // Existing worlds may contain contracts created by 1.0.6 without a cycle key.
         // Migrate those in place, without wiping accepted/completed entries or fines.
-        if(b.entries.removeIf(c->!MasterkiCatalogPolicy.allowed(c.item)))setDirty();
+        // Never silently delete an invalid contract: that would make the full
+        // 40/40 bonus impossible. Replace the slot without changing rotation.
         long current=MasterkiSchedule.cycleDay(now);
         if(b.cycleDay==Long.MIN_VALUE && b.nextRefresh>0 && !b.entries.isEmpty())
             migrateOldBoard(b,now,current);
         if(b.cycleDay!=current){
+            repairImpossible(b,now);
             // Expire BEFORE removing an old rotation. Offline players are charged once.
             expire(uuid,b,now);
             rotate(uuid,b,current,now);
         }
+        repairImpossible(b,now);
         expire(uuid,b,now);
         // v1.0.11 worlds may have received today's batch before the upgrade.
         recoverCurrentBatch(b);
@@ -173,6 +180,99 @@ public final class MasterkiContracts extends SavedData {
         b.batches.put(batch.rotation,batch);
         setDirty();
     }
+    /**
+     * Replace only unfinished, demonstrably uncraftable or explicitly denied
+     * mod items. The original contract key/rotation and the 40-slot batch size
+     * stay unchanged. An accepted bad order is replaced WITHOUT any fine.
+     */
+    private void repairImpossible(Board board,long now){
+        if(serverLevel==null || board.entries.isEmpty())return;
+        List<Masterki.Contract> pool=Masterki.contracts().stream()
+            .filter(c->MasterkiObtainability.obtainable(serverLevel,c.item())).toList();
+        java.util.Set<String> used=new java.util.HashSet<>();
+        for(ContractEntry entry:board.entries)used.add(entry.item);
+        for(ContractEntry entry:board.entries){
+            if(!("available".equals(entry.state)||"accepted".equals(entry.state)))continue;
+            if(MasterkiObtainability.obtainable(serverLevel,entry.item))continue;
+            Masterki.Contract replacement=null;
+            if(!pool.isEmpty()){
+                int start=ThreadLocalRandom.current().nextInt(pool.size());
+                for(int n=0;n<pool.size();n++){
+                    Masterki.Contract c=pool.get((start+n)%pool.size());
+                    if(!used.contains(c.item())){
+                        replacement=c;break;
+                    }
+                }
+                if(replacement==null)for(Masterki.Contract c:pool)
+                    if(!c.item().equals(entry.item)){replacement=c;break;}
+            }
+            if(replacement==null){
+                System.err.println("[Masterki] No safe contract substitute for "+entry.item);
+                continue;
+            }
+            long oldPay=entry.acceptedPayout>0?entry.acceptedPayout:entry.reward;
+            String oldItem=entry.item;
+            used.remove(oldItem);
+            used.add(replacement.item());
+            int[] variants={75,100,125,150};
+            int multiplier=variants[ThreadLocalRandom.current().nextInt(variants.length)];
+            int amount=Math.max(1,(int)Math.min(4096,
+                Math.round(replacement.amount()*multiplier/100.0)));
+            long payout=Masterki.contractReward(replacement.item(),amount);
+            entry.poolId=replacement.id();
+            entry.item=replacement.item();
+            entry.amount=amount;
+            entry.reward=payout;
+            entry.acceptedPayout=0L;
+            entry.state="available";
+            entry.difficult=classify(entry.item,entry.amount);
+            // Preserve a valid longer old deadline; never make a repair overdue.
+            long freshCutoff=MasterkiSchedule.cutoff(
+                MasterkiSchedule.cycleDay(now),entry.difficult?3:1);
+            entry.dueAt=Math.max(entry.dueAt,freshCutoff);
+            BonusBatch batch=board.batches.get(entry.rotation);
+            if(batch!=null)batch.totalReward=Math.max(0L,
+                batch.totalReward-oldPay+payout);
+            setDirty();
+        }
+    }
+
+    /** Persistent server-wide three daily orders (same IDs across all players).
+     * Replaces only invalid entries; cannot be farmed by repeated GUI openings.
+     */
+    public List<Masterki.Contract> dailyTasks(long now){
+        long cycle=MasterkiSchedule.cycleDay(now);
+        if(dailyTaskCycle!=cycle){
+            dailyTaskCycle=cycle;
+            dailyOrders.clear();
+            // Seed from legacy deterministic daily IDs for migration compatibility.
+            dailyOrders.addAll(Masterki.dailyTasks());
+            setDirty();
+        }
+        if(serverLevel==null)return List.copyOf(dailyOrders);
+        List<Masterki.Contract> pool=Masterki.contracts().stream()
+            .filter(c->MasterkiObtainability.obtainable(serverLevel,c.item())).toList();
+        java.util.Set<String> used=new java.util.HashSet<>();
+        for(Masterki.Contract c:dailyOrders)used.add(c.item());
+        for(int index=0;index<dailyOrders.size();index++){
+            Masterki.Contract old=dailyOrders.get(index);
+            if(MasterkiObtainability.obtainable(serverLevel,old.item()))continue;
+            Masterki.Contract replacement=null;
+            for(Masterki.Contract candidate:pool)
+                if(!used.contains(candidate.item())){replacement=candidate;break;}
+            if(replacement==null)for(Masterki.Contract candidate:pool)
+                if(!candidate.item().equals(old.item())){replacement=candidate;break;}
+            if(replacement==null)continue;
+            used.remove(old.item());
+            used.add(replacement.item());
+            dailyOrders.set(index,new Masterki.Contract(
+                "daily:"+replacement.id(),replacement.item(),
+                Math.max(4,replacement.amount()/4),Math.max(30,replacement.reward()/4)));
+            setDirty();
+        }
+        return List.copyOf(dailyOrders);
+    }
+
     private void failBatch(Board board,ContractEntry entry){
         BonusBatch batch=board.batches.get(entry.rotation);
         if(batch!=null)batch.failed++;
@@ -244,7 +344,7 @@ public final class MasterkiContracts extends SavedData {
             else retire(board,entry,now);
         }
         List<Masterki.Contract> pool=new ArrayList<>(Masterki.contracts());
-        pool.removeIf(c->!MasterkiCatalogPolicy.allowed(c.item()));
+        pool.removeIf(c->!MasterkiObtainability.obtainable(serverLevel,c.item()));
         Collections.shuffle(pool,ThreadLocalRandom.current());
         Map<String,Integer> previousVariants=new HashMap<>();
         for(String value:board.previous){
@@ -536,6 +636,15 @@ public final class MasterkiContracts extends SavedData {
         tag.putInt("LatePercent",latePercent);
         tag.putInt("CancelPercent",cancelPercent);
         tag.putBoolean("FinesEnabled",finesEnabled);
+        tag.putLong("DailyTaskCycle",dailyTaskCycle);
+        ListTag daily=new ListTag();
+        for(Masterki.Contract task:dailyOrders){
+            CompoundTag row=new CompoundTag();
+            row.putString("Id",task.id());row.putString("Item",task.item());
+            row.putInt("Amount",task.amount());row.putLong("Reward",task.reward());
+            daily.add(row);
+        }
+        tag.put("DailyOrders",daily);
         ListTag players=new ListTag();
         for(var pair:boards.entrySet()){
             CompoundTag data=new CompoundTag();
@@ -600,6 +709,17 @@ public final class MasterkiContracts extends SavedData {
         s.latePercent=tag.contains("LatePercent")?Math.clamp(tag.getInt("LatePercent"),0,100):10;
         s.cancelPercent=tag.contains("CancelPercent")?Math.clamp(tag.getInt("CancelPercent"),0,100):5;
         s.finesEnabled=!tag.contains("FinesEnabled")||tag.getBoolean("FinesEnabled");
+        s.dailyTaskCycle=tag.contains("DailyTaskCycle",Tag.TAG_LONG)
+            ?tag.getLong("DailyTaskCycle"):Long.MIN_VALUE;
+        ListTag daily=tag.getList("DailyOrders",Tag.TAG_COMPOUND);
+        for(int i=0;i<daily.size()&&i<3;i++){
+            CompoundTag task=daily.getCompound(i);
+            if(!task.getString("Id").startsWith("daily:")||
+                task.getString("Item").length()>128)continue;
+            s.dailyOrders.add(new Masterki.Contract(task.getString("Id"),
+                task.getString("Item"),Math.clamp(task.getInt("Amount"),1,4096),
+                Math.max(1,task.getLong("Reward"))));
+        }
         ListTag players=tag.getList("Boards",Tag.TAG_COMPOUND);
         for(int i=0;i<players.size();i++){
             CompoundTag data=players.getCompound(i);

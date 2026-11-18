@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.12 — TEST BUILD
+# Masterki Economy 1.0.13 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -188,3 +188,22 @@ The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Change
 - The existing developer `/masterki dev contracts reroll` remains an explicit cheat/test command, separate from safe admin cleanup.
 - No changes to trading, per-player sell limits, hunt species caps, balances or difficulty coefficients. Install the same 1.0.12 JAR on both client/server; **back up the world first**, and do not delete the world or config directory.
 - Compilation and server smoke testing by GitHub Actions do not replace an in-game verification of GUI rendering, three-day rotation behavior, and multiplayer persistence.
+
+## v1.0.13 — server-side impossible-job replacement and remembered shop browsing
+
+### Contract safety and auto-replacement
+- On every active board check, the **server** detects unfinished contracts whose item is disallowed, or is a modded item with no server-registered recipe output and no recognized natural-loot resource pattern. This catches noncraftable dynamically generated items such as many colored Aeronautics encased shafts. A demonstrably unsafe contract is **replaced in the same existing slot**, rather than deleted or queued for the next 05:00 rotation.
+- Each replacement keeps its contract ID, original daily batch/rotation, original batch slot count and already-completed contracts intact. The new job gets a safe item, new amount, corresponding market-based payout and a deadline no earlier than the existing deadline or the next appropriate cutoff. An accepted impossible order becomes **available without a fine**, and the batch bonus sum is adjusted (old accepted payout removed, new raw payout inserted). Already-completed jobs are never modified.
+- New daily batches also select only eligible items; the clock and 05:00 `Asia/Yekaterinburg` schedule remain unchanged.
+- The three server-wide **daily tasks** are now stored in `masterki_contracts` SavedData with a cycle ID. Only an impossible task is replaced, immediately, in the current cycle, and once repaired it stays stable across refreshes, new logins and server restarts. Completed daily task IDs are not discarded or reset. Older deterministic daily tasks are used as the migration seed before any necessary replacements.
+- There is no universal API proving that every custom scripted, loot-driven or machine-only modded item is obtainable in Survival. This implementation checks the actual server's recipe output list across registered recipe types, retains all eligible vanilla noncraftable loot, and recognizes some modded worldgen / drop name patterns. For custom mechanics that have no registered recipe, admins can explicitly allow items in `config/masterki/obtainability.json` → `force_obtainable`; `force_unobtainable` excludes known impossible items. The server command `/masterki admin reload` reloads these lists, and 30-second cache expiry also picks up file edits. This is conservative safety filtering, **not a perfect proof** of survival availability for all mods.
+- During a repair the server avoids duplicate replacement items where possible; replacement attempts are bounded, so no endless loop. If a modpack provides fewer than 40 known-safe choices, the mod keeps existing entries rather than silently deleting contracts or changing the batch total.
+
+### Shop text search and pages
+- Replaced the manually drawn search input with Minecraft's native `EditBox`. This brings working **Ctrl+A / Ctrl+C / Ctrl+V / Ctrl+X**, selection with Shift+arrows, cursor navigation, Delete/Backspace, Home/End and clipboard paste. Added a bounded local Ctrl+Z search-undo stack. Esc/Enter exits search before closing the screen.
+- Shop (`Магазин`), sale (`Продажа`), contracts and daily task pages are tracked **independently**. Switching tabs restores each tab's position; reopening the GUI restores the last tab and its page. A restored page is not clamped to zero while the product catalogue is still being delivered in chunks. Actual changes to available page count clamp only that tab.
+- Market category and search text are remembered independently for buying and selling.
+- Persistent client-only navigation lives under `config/masterki/shop_navigation_<player-uuid>.json`; every player profile has separate saved page state and search/category preferences. No edits to user balances, shop stocks, hunt counters, accepted normal contracts or premium eligibility.
+
+### Install / verification
+Install the **same v1.0.13 JAR** on both client and dedicated NeoForge 1.21.1 server. Java 21. Always back up the world before upgrading from v1.0.12. The original world SavedData migration is additive and does not reset existing money or completed contracts. GitHub Actions compilation / dedicated server smoke do not verify interactive Ctrl+V or a complete modpack's crafting/loot possibilities; validate both in a real client.
