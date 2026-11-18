@@ -39,6 +39,9 @@ public final class MasterkiContracts extends SavedData {
     private static final long BONUS_DENOMINATOR = 10000L;
     private final Map<UUID, Board> boards = new HashMap<>();
     private final Map<UUID, List<Fine>> fineHistory = new HashMap<>();
+    // Escrow refunds for a server-driven replacement of an impossible job.
+    // Stored by UUID so offline players do not lose already handed-in items.
+    private final Map<UUID,Map<String,Integer>> pendingRefunds=new HashMap<>();
     private int latePercent = 10;
     private int contractPriceVersion = 0;
     private int cancelPercent = 5;
@@ -56,6 +59,8 @@ public final class MasterkiContracts extends SavedData {
         // Frozen at acceptance; old world contracts keep their original payout.
         public long acceptedPayout;
         public long closedAt;
+        /** Already deposited nonstackable items. Server SavedData only. */
+        public int deposited;
         public boolean difficult;
         ContractEntry(String key,String poolId,String item,int amount,long reward,long rotation){
             this.key=key;this.poolId=poolId;this.item=item;this.amount=amount;
@@ -64,8 +69,11 @@ public final class MasterkiContracts extends SavedData {
         MasterkiNetwork.ContractStatus view(boolean carriedOver,long preview) {
             long shown="available".equals(state)?preview:
                 acceptedPayout>0?acceptedPayout:reward;
+            ResourceLocation id=ResourceLocation.tryParse(item);
+            boolean nonstack=id!=null&&BuiltInRegistries.ITEM.containsKey(id)
+                &&new ItemStack(BuiltInRegistries.ITEM.get(id)).getMaxStackSize()==1;
             return new MasterkiNetwork.ContractStatus(key,item,amount,shown,state,dueAt,
-                difficult,carriedOver);
+                difficult,carriedOver,deposited,nonstack);
         }
     }
     private static final class Board {
@@ -151,12 +159,12 @@ public final class MasterkiContracts extends SavedData {
         if(b.cycleDay==Long.MIN_VALUE && b.nextRefresh>0 && !b.entries.isEmpty())
             migrateOldBoard(b,now,current);
         if(b.cycleDay!=current){
-            repairImpossible(b,now);
+            repairImpossible(uuid,b,now);
             // Expire BEFORE removing an old rotation. Offline players are charged once.
             expire(uuid,b,now);
             rotate(uuid,b,current,now);
         }
-        repairImpossible(b,now);
+        repairImpossible(uuid,b,now);
         expire(uuid,b,now);
         // v1.0.11 worlds may have received today's batch before the upgrade.
         recoverCurrentBatch(b);
@@ -185,7 +193,7 @@ public final class MasterkiContracts extends SavedData {
      * mod items. The original contract key/rotation and the 40-slot batch size
      * stay unchanged. An accepted bad order is replaced WITHOUT any fine.
      */
-    private void repairImpossible(Board board,long now){
+    private void repairImpossible(UUID uuid,Board board,long now){
         if(serverLevel==null || board.entries.isEmpty())return;
         List<Masterki.Contract> pool=Masterki.contracts().stream()
             .filter(c->MasterkiObtainability.obtainable(serverLevel,c.item())).toList();
@@ -212,6 +220,13 @@ public final class MasterkiContracts extends SavedData {
             }
             long oldPay=entry.acceptedPayout>0?entry.acceptedPayout:entry.reward;
             String oldItem=entry.item;
+            if(entry.deposited>0){
+                // The replacement is not the player's fault: refund safely,
+                // including when the player is offline or inventory is full.
+                pendingRefunds.computeIfAbsent(uuid,k->new HashMap<>())
+                    .merge(oldItem,entry.deposited,Integer::sum);
+                entry.deposited=0;
+            }
             used.remove(oldItem);
             used.add(replacement.item());
             int[] variants={75,100,125,150};
@@ -271,6 +286,40 @@ public final class MasterkiContracts extends SavedData {
             setDirty();
         }
         return List.copyOf(dailyOrders);
+    }
+
+    /**
+     * Safely return escrowed items after a server-side contract replacement.
+     * Items are never dropped on the ground when an inventory is full.
+     * Missing registry entries remain queued until that mod is restored.
+     */
+    public void deliverRefunds(ServerPlayer player){
+        Map<String,Integer> owed=pendingRefunds.get(player.getUUID());
+        if(owed==null||owed.isEmpty())return;
+        int delivered=0;
+        for(var entry:new ArrayList<>(owed.entrySet())){
+            ResourceLocation id=ResourceLocation.tryParse(entry.getKey());
+            if(id==null||!BuiltInRegistries.ITEM.containsKey(id))continue;
+            Item item=BuiltInRegistries.ITEM.get(id);
+            if(item==Items.AIR)continue;
+            int count=Math.max(0,entry.getValue());
+            while(count>0&&delivered<16){
+                ItemStack stack=new ItemStack(item);
+                if(!player.getInventory().add(stack))break;
+                count--;delivered++;
+            }
+            if(count<=0)owed.remove(entry.getKey());
+            else owed.put(entry.getKey(),count);
+            if(delivered>=16)break;
+        }
+        if(owed.isEmpty())pendingRefunds.remove(player.getUUID());
+        if(delivered>0){
+            player.getInventory().setChanged();
+            setDirty();
+            Masterki.tell(player,"Возвращено "+delivered+
+                " предметов из автоматически заменённых контрактов.",
+                ChatFormatting.GREEN);
+        }
     }
 
     private void failBatch(Board board,ContractEntry entry){
@@ -449,8 +498,26 @@ public final class MasterkiContracts extends SavedData {
         Item item=BuiltInRegistries.ITEM.get(id);
         if(item==Items.AIR)return false;
         ItemStack sample=new ItemStack(item);
-        if(itemCount(player,sample)<e.amount){
-            Masterki.tell(player,"Недостаточно ресурсов для контракта.",ChatFormatting.RED);return false;
+        boolean partialAllowed=sample.getMaxStackSize()==1;
+        int remaining=partialAllowed?Math.max(0,e.amount-e.deposited):e.amount;
+        int available=itemCount(player,sample);
+        if(available<=0&&remaining>0){
+            Masterki.tell(player,"Нет подходящих предметов для сдачи.",ChatFormatting.RED);return false;
+        }
+        if(!partialAllowed&&available<remaining){
+            Masterki.tell(player,"Недостаточно ресурсов: нужно "+remaining+".",ChatFormatting.RED);return false;
+        }
+        int submitting=Math.min(remaining,available);
+        if(partialAllowed&&submitting<remaining){
+            // Nonstackable partial deliveries are escrowed in the contract,
+            // and never trigger intermediate payments or the batch bonus.
+            take(player,sample,submitting);
+            e.deposited+=submitting;
+            setDirty();
+            Masterki.tell(player,"Внесено "+submitting+" шт. · сдано "+
+                e.deposited+"/"+e.amount+". Награда только после полной сдачи.",
+                ChatFormatting.YELLOW);
+            return true;
         }
         long pay=e.acceptedPayout>0?e.acceptedPayout:e.reward;
         BonusBatch batch=b.batches.get(e.rotation);
@@ -463,7 +530,8 @@ public final class MasterkiContracts extends SavedData {
             Masterki.tell(player,"Баланс слишком велик для начисления награды.",ChatFormatting.RED);
             return false;
         }
-        take(player,sample,e.amount);
+        take(player,sample,submitting);
+        if(partialAllowed)e.deposited+=submitting;
         e.state="completed"; // commit state before any payment
         e.closedAt=now;
         if(batch!=null){
@@ -663,6 +731,7 @@ public final class MasterkiContracts extends SavedData {
                 n.putLong("Due",c.dueAt);n.putLong("Rotation",c.rotation);
                 n.putLong("AcceptedPayout",c.acceptedPayout);
                 n.putLong("ClosedAt",c.closedAt);
+                n.putInt("Deposited",c.deposited);
                 n.putBoolean("Difficult",c.difficult);tasks.add(n);
             }
             data.put("Entries",tasks);
@@ -700,6 +769,21 @@ public final class MasterkiContracts extends SavedData {
             entry.put("Fines",lines);fines.add(entry);
         }
         tag.put("Fines",fines);
+        ListTag refunds=new ListTag();
+        for(var pair:pendingRefunds.entrySet()){
+            CompoundTag owner=new CompoundTag();
+            owner.putUUID("UUID",pair.getKey());
+            ListTag items=new ListTag();
+            for(var entry:pair.getValue().entrySet()){
+                if(entry.getValue()<=0)continue;
+                CompoundTag line=new CompoundTag();
+                line.putString("Item",entry.getKey());
+                line.putInt("Amount",entry.getValue());
+                items.add(line);
+            }
+            if(!items.isEmpty()){owner.put("Items",items);refunds.add(owner);}
+        }
+        tag.put("PendingRefunds",refunds);
         return tag;
     }
     private static MasterkiContracts load(CompoundTag tag,HolderLookup.Provider registries){
@@ -740,6 +824,8 @@ public final class MasterkiContracts extends SavedData {
                 c.acceptedPayout=t.contains("AcceptedPayout",Tag.TAG_LONG)
                     ?Math.max(0,t.getLong("AcceptedPayout")):0L;
                 c.closedAt=t.contains("ClosedAt",Tag.TAG_LONG)?t.getLong("ClosedAt"):0L;
+                c.deposited=t.contains("Deposited",Tag.TAG_INT)
+                    ?Math.clamp(t.getInt("Deposited"),0,c.amount):0;
                 c.difficult=t.getBoolean("Difficult");b.entries.add(c);
             }
             ListTag bonuses=data.getList("BonusBatches",Tag.TAG_COMPOUND);
@@ -774,6 +860,21 @@ public final class MasterkiContracts extends SavedData {
                 lines.add(new Fine(f.getLong("Time"),f.getString("Cause"),f.getLong("Amount")));
             }
             s.fineHistory.put(e.getUUID("UUID"),lines);
+        }
+        ListTag refunds=tag.getList("PendingRefunds",Tag.TAG_COMPOUND);
+        for(int i=0;i<refunds.size();i++){
+            CompoundTag owner=refunds.getCompound(i);
+            if(!owner.hasUUID("UUID"))continue;
+            Map<String,Integer> items=new HashMap<>();
+            ListTag rows=owner.getList("Items",Tag.TAG_COMPOUND);
+            for(int j=0;j<rows.size()&&j<512;j++){
+                CompoundTag row=rows.getCompound(j);
+                ResourceLocation id=ResourceLocation.tryParse(row.getString("Item"));
+                if(id==null)continue;
+                int amount=Math.clamp(row.getInt("Amount"),0,100_000);
+                if(amount>0)items.put(id.toString(),amount);
+            }
+            if(!items.isEmpty())s.pendingRefunds.put(owner.getUUID("UUID"),items);
         }
         return s;
     }

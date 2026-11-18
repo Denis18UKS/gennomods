@@ -39,6 +39,8 @@ public final class ShopScreen extends Screen {
     private final ArrayDeque<String> undoSearch=new ArrayDeque<>();
     private String pendingExpiringContract="";
     private long pendingExpiringUntil=0L;
+    private String pendingCancelContract="";
+    private long pendingCancelUntil=0L;
     private float uiScale;private int px,py;
     private final List<MasterkiNetwork.Product> visible=new ArrayList<>();
     private MasterkiNetwork.Product selected;
@@ -353,7 +355,9 @@ public final class ShopScreen extends Screen {
                 g.fill(470,164,860,168,0xFF4B3022);
                 g.fill(470,164,470+done,168,batch.failed()?RED:GREEN);
             }
-            if(!daily && pendingExpiringUntil>System.currentTimeMillis())
+            if(!daily && pendingCancelUntil>System.currentTimeMillis())
+                text(g,"Отмена уничтожит уже внесённые предметы! Нажмите «Точно?» ещё раз.",28,162,RED);
+            else if(!daily && pendingExpiringUntil>System.currentTimeMillis())
                 text(g,"До истечения контракта мало времени! Нажмите «Принять» ещё раз.",28,162,RED);
             List<MasterkiNetwork.Task> rows=tasksForTab();
             int perPage=daily?8:5;
@@ -381,6 +385,13 @@ public final class ShopScreen extends Screen {
                         String descriptor=type+" · "+statusLabel(code)+(state.carriedOver()?" (из прошлой партии)":"");
                         text(g,shorten(descriptor,55),56,yy+20,
                             "completed".equals(code)?GREEN:0xFFD7B990);
+                        if(state.partialAllowed()&&"accepted".equals(code)){
+                            int contributed=Math.min(state.amount(),state.deposited());
+                            text(g,"Внесено: "+contributed+"/"+state.amount(),445,yy+34,GOLD);
+                            g.fill(56,yy+44,570,yy+46,0xFF533522);
+                            int complete=(int)(514L*contributed/Math.max(1,state.amount()));
+                            g.fill(56,yy+44,56+complete,yy+46,GREEN);
+                        }
                         boolean nearDeadline=state.deadline()-System.currentTimeMillis()<2L*3600*1000
                             && ("available".equals(code)||"accepted".equals(code));
                         text(g,"До "+deadlineLabel(state.deadline())+" · "+remaining(state.deadline()),
@@ -390,8 +401,15 @@ public final class ShopScreen extends Screen {
                         boolean pending=c.id().equals(pendingExpiringContract)&&pendingExpiringUntil>System.currentTimeMillis();
                         button(g,777,yy+21,86,24,pending?"Точно?":"Принять",pending,GOLD);
                     }else if("accepted".equals(code)){
-                        button(g,689,yy+21,82,24,"Отмена",false,RED);
-                        button(g,777,yy+21,86,24,"Сдать",false,GREEN);
+                        if(state.partialAllowed()){
+                            boolean confirm=state.deposited()>0&&c.id().equals(pendingCancelContract)
+                                &&pendingCancelUntil>System.currentTimeMillis();
+                            button(g,655,yy+21,80,24,confirm?"Точно?":"Отмена",confirm,RED);
+                            button(g,741,yy+21,122,24,"Внести имеющиеся",false,GREEN);
+                        }else{
+                            button(g,689,yy+21,82,24,"Отмена",false,RED);
+                            button(g,777,yy+21,86,24,"Сдать",false,GREEN);
+                        }
                     }else button(g,777,yy+21,86,24,statusLabel(code),true,0xFF9AC58F);
                 }
             }
@@ -553,25 +571,44 @@ public final class ShopScreen extends Screen {
                 return true;
             }
         }
-        if(tab.equals("Контракты")&&x>=689&&x<863&&y>=173&&y<423){
+        if(tab.equals("Контракты")&&x>=655&&x<863&&y>=173&&y<423){
             int index=page*5+(int)((y-173)/50);
             List<MasterkiNetwork.Task> rows=tasksForTab();
             if(index>=0&&index<rows.size()&&y>=173+(index-page*5)*50+21){
                 var contract=contractStatus(rows.get(index).id());
                 if(contract!=null){
-                    String action="available".equals(contract.status())?"contract_accept":
-                        "accepted".equals(contract.status())?(x<776?"contract_cancel":"contract_complete"):"";
+                    String action="";
+                    if("available".equals(contract.status())&&x>=777)
+                        action="contract_accept";
+                    else if("accepted".equals(contract.status())){
+                        if(contract.partialAllowed()){
+                            if(x>=655&&x<735)action="contract_cancel";
+                            else if(x>=741)action="contract_complete";
+                        }else{
+                            if(x>=689&&x<771)action="contract_cancel";
+                            else if(x>=777)action="contract_complete";
+                        }
+                    }
                     if(!action.isEmpty()){
-                        if("contract_accept".equals(action)&&contract.deadline()-System.currentTimeMillis()<2L*3600*1000){
-                            if(!contract.id().equals(pendingExpiringContract) ||
-                                System.currentTimeMillis()>pendingExpiringUntil){
+                        long now=System.currentTimeMillis();
+                        if("contract_cancel".equals(action)&&contract.deposited()>0){
+                            if(!contract.id().equals(pendingCancelContract)||now>pendingCancelUntil){
+                                pendingCancelContract=contract.id();
+                                pendingCancelUntil=now+6000L;
+                                return true;
+                            }
+                        }
+                        if("contract_accept".equals(action)&&contract.deadline()-now<2L*3600*1000){
+                            if(!contract.id().equals(pendingExpiringContract)||now>pendingExpiringUntil){
                                 pendingExpiringContract=contract.id();
-                                pendingExpiringUntil=System.currentTimeMillis()+6000L;
+                                pendingExpiringUntil=now+6000L;
                                 return true;
                             }
                         }
                         pendingExpiringContract="";
                         pendingExpiringUntil=0;
+                        pendingCancelContract="";
+                        pendingCancelUntil=0;
                         PacketDistributor.sendToServer(new MasterkiNetwork.Action(action,contract.id(),1));
                         return true;
                     }

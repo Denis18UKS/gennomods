@@ -1,4 +1,4 @@
-# Masterki Economy 1.0.13 — TEST BUILD
+# Masterki Economy 1.0.14 — TEST BUILD
 
 NeoForge **1.21.1**, Java **21**. Install the same Masterki JAR on the **client and server**. This is a **development build**.
 
@@ -207,3 +207,14 @@ The timezone must be a Java/IANA ZoneId and `reset_hour` an integer 0-23. Change
 
 ### Install / verification
 Install the **same v1.0.13 JAR** on both client and dedicated NeoForge 1.21.1 server. Java 21. Always back up the world before upgrading from v1.0.12. The original world SavedData migration is additive and does not reset existing money or completed contracts. GitHub Actions compilation / dedicated server smoke do not verify interactive Ctrl+V or a complete modpack's crafting/loot possibilities; validate both in a real client.
+
+## v1.0.14 — incremental deliveries for nonstackable contract items
+
+- **Only contracts whose target item has `ItemStack.getMaxStackSize()==1`** support partial hand-in. The server checks the installed registry and matches the existing strict item-and-components inventory logic (main inventory slots 0-35); stackable items still require the entire quantity in one delivery.
+- For accepted nonstackable jobs, **Внести имеющиеся** transfers up to the outstanding required count from the player's main inventory into saved per-contract escrow. The progress `Deposited` survives world reloads. Additional hand-ins can be made over multiple sessions; excess items are not consumed. The server is authoritative; no client-supplied quantities or totals are trusted.
+- **No partial payout.** Only when `Deposited+handed-in` reaches the contract's requested amount does the server mark the job completed, pay the entire fixed accepted reward, and (if this is the final finished job) pay the original 15%-minus-13%-commission whole-batch bonus exactly once. Both payments are checked for overflow **before** the final items are consumed.
+- The contracts tab displays a **Внесено: N/total** counter and tiny progress bar for accepted nonstackable jobs. The HUD displays `already deposited + in inventory / total` (e.g. `24+12/64`), with the same contract reward and deadline. The **Отмена** button requires a second press within six seconds if partial items were deposited; canceled or overdue jobs forfeit deposited items, consistent with the warning.
+- Server-triggered replacement of a now-impossible contract **automatically credits previously deposited items to a per-player persistent refund queue** before resetting its slot. During periodic sync or login the server safely inserts a limited number of queued refunds into available inventory slots; remaining refunds stay saved for later. If a mod providing a previously deposited item is temporarily absent, its queue is retained until the item exists again. No automatic ground-dropping or invented replacement items.
+- Existing 1.0.13 contracts migrate automatically with `Deposited=0` when the old NBT field is absent. The refund queue and deposited values are stored in the overworld `masterki_contracts` SavedData. Store balances, sale limits, prices, difficulty rewards, normal 05:00 Asia/Yekaterinburg rotations, three-day hard deadlines and daily jobs are not changed.
+
+**Deployment:** back up the world and replace the prior jar on both NeoForge 1.21.1 clients and server (Java 21). Never delete world data. Automated compilation and dedicated server smoke cannot by themselves prove GUI controls and actual incremental deliveries in a live modpack: test with a nonstackable contract, reload, complete, verify one payout and verify the replacement refund queue with a full inventory.

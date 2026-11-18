@@ -15,7 +15,7 @@ public final class MasterkiNetwork {
     public record Product(String id,String category,long buy,long sell,int stock,int daily,int cap){}
     public record Task(String id,String item,int amount,long reward){}
     public record ContractStatus(String id,String item,int amount,long reward,String status,long deadline,
-                                 boolean difficult,boolean carriedOver){}
+                                 boolean difficult,boolean carriedOver,int deposited,boolean partialAllowed){}
     public record LayoutEntry(String id,int x,int y,int scale,boolean visible){}
     public record BonusStatus(long rotation,int total,int completed,boolean failed,
                               boolean paid,long reward){}
@@ -83,7 +83,8 @@ public final class MasterkiNetwork {
                 for(LayoutEntry e:p.layout){buf.writeUtf(e.id(),64);buf.writeInt(e.x());buf.writeInt(e.y());buf.writeVarInt(e.scale());buf.writeBoolean(e.visible());}
                 buf.writeLong(p.nextContracts);buf.writeLong(p.dailyReset);
                 buf.writeVarInt(p.contracts.size());
-                for(ContractStatus entry:p.contracts){buf.writeUtf(entry.id(),48);buf.writeUtf(entry.item(),128);buf.writeVarInt(entry.amount());buf.writeLong(entry.reward());buf.writeUtf(entry.status(),24);buf.writeLong(entry.deadline());buf.writeBoolean(entry.difficult());buf.writeBoolean(entry.carriedOver());}
+                for(ContractStatus entry:p.contracts){buf.writeUtf(entry.id(),48);buf.writeUtf(entry.item(),128);buf.writeVarInt(entry.amount());buf.writeLong(entry.reward());buf.writeUtf(entry.status(),24);buf.writeLong(entry.deadline());buf.writeBoolean(entry.difficult());buf.writeBoolean(entry.carriedOver());
+                    buf.writeVarInt(entry.deposited());buf.writeBoolean(entry.partialAllowed());}
                 buf.writeVarInt(p.dailyDone.size());
                 for(String key:p.dailyDone)buf.writeUtf(key,48);
                 buf.writeVarInt(p.bonuses.size());
@@ -119,7 +120,7 @@ public final class MasterkiNetwork {
                 List<ContractStatus> contracts=new ArrayList<>(number);
                 for(int i=0;i<number;i++)contracts.add(new ContractStatus(buf.readUtf(48),
                     buf.readUtf(128),buf.readVarInt(),buf.readLong(),buf.readUtf(24),buf.readLong(),
-                    buf.readBoolean(),buf.readBoolean()));
+                    buf.readBoolean(),buf.readBoolean(),buf.readVarInt(),buf.readBoolean()));
                 int count=Math.min(64,buf.readVarInt());
                 List<String> dailyDone=new ArrayList<>(count);
                 for(int i=0;i<count;i++)dailyDone.add(buf.readUtf(48));

@@ -352,6 +352,9 @@ public final class Masterki {
         long now=System.currentTimeMillis();
         List<String> dailyDone=new ArrayList<>();
         MasterkiContracts rotation=MasterkiContracts.of(p.serverLevel());
+        // Ensure the current rotation/repairs are applied BEFORE queued returns.
+        long nextRotation=rotation.nextRotation(p.getUUID(),now);
+        rotation.deliverRefunds(p);
         for(Contract c:rotation.dailyTasks(now)){
             tasks.add(new MasterkiNetwork.Task(c.id,c.item,c.amount,
                 MasterkiDifficulty.adjusted(c.reward, p)));
@@ -359,7 +362,7 @@ public final class Masterki {
         }
         PacketDistributor.sendToPlayer(p,new MasterkiNetwork.Snapshot(open,page,data.balance(p.getUUID()),data.nextRestock,
             List.of(),tasks,List.copyOf(data.logs(p.getUUID())),MasterkiLayout.of(p.serverLevel()).entries(),
-            rotation.nextRotation(p.getUUID(),now),MasterkiSchedule.nextCutoff(now),
+            nextRotation,MasterkiSchedule.nextCutoff(now),
             rotation.visible(p,now),dailyDone,rotation.bonuses(p,now),
             rotation.archive(p.getUUID(),now),MasterkiSchedule.zone().getId()));
         if(open)sendCatalog(p,data);

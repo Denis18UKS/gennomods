@@ -118,7 +118,8 @@ public final class ClientContractHud {
 
         // Notify for ALL accepted contracts, not just the visible first rows.
         for(var c:contracts){
-            boolean ready=inventoryCount(mc,c.item())>=c.amount();
+            int inventory=inventoryCount(mc,c.item());
+            boolean ready=inventory+c.deposited()>=c.amount();
             if(ready && announcedReady.add(c.id()))
                 mc.player.displayClientMessage(Component.literal(
                     "Контракт готов к сдаче: "+name(c.item())),true);
@@ -136,7 +137,8 @@ public final class ClientContractHud {
         for(int i=0;i<rows;i++){
             var c=contracts.get(i);
             int cy=y+22+i*stride;
-            int count=Math.min(c.amount(),inventoryCount(mc,c.item()));
+            int inventory=inventoryCount(mc,c.item());
+            int count=Math.min(c.amount(),inventory+c.deposited());
             boolean ready=count>=c.amount();
             String title=fit(mc,name(c.item()),w-16);
             g.drawString(mc.font,title,x+8,cy,ready?0xFFA6E69A:0xFFF6D6A3,false);
@@ -144,7 +146,9 @@ public final class ClientContractHud {
             int inner=w-16;
             int filled=(int)Math.min(inner,(long)inner*count/Math.max(1,c.amount()));
             g.fill(x+8,cy+12,x+8+filled,cy+17,ready?0xFF84D46A:0xFFD8A04F);
-            String left=count+"/"+c.amount()+"  +"+reward(c.reward())+" М";
+            String left=(c.partialAllowed()&&c.deposited()>0
+                ?c.deposited()+"+"+inventory:Integer.toString(count))+
+                "/"+c.amount()+"  +"+reward(c.reward())+" М";
             String right=remaining(c.deadline());
             int rightWidth=mc.font.width(right);
             g.drawString(mc.font,fit(mc,left,w-25-rightWidth),x+8,cy+23,
