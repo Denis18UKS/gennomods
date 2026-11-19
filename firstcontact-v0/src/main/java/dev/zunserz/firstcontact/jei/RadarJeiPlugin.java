@@ -1,15 +1,22 @@
 package dev.zunserz.firstcontact.jei;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.zunserz.firstcontact.FirstContact;
+import dev.zunserz.firstcontact.RadarIntegration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
+import mezz.jei.api.gui.builder.ITooltipBuilder;
 import mezz.jei.api.gui.drawable.IDrawable;
+import mezz.jei.api.gui.inputs.IJeiInputHandler;
+import mezz.jei.api.gui.inputs.IJeiUserInput;
+import mezz.jei.api.gui.widgets.IRecipeExtrasBuilder;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.recipe.IFocusGroup;
 import mezz.jei.api.recipe.RecipeIngredientRole;
@@ -27,16 +34,21 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
 
-/** Live 3D preview in JEI, built from the exact same voxel blueprint as server validation. */
+/**
+ * Create: Radars assembly example, not a counterfeit Create radar.
+ * The schematic uses real radar-bearing, receiver, dish and plate blocks.
+ * Interactive JEI controls: drag to orbit, scroll zoom, click layer/auto buttons.
+ */
 @JeiPlugin
 public final class RadarJeiPlugin implements IModPlugin {
     public record RadarSchematic() {}
     private static final RecipeType<RadarSchematic> TYPE =
-        RecipeType.create(FirstContact.ID, "radar_schematic", RadarSchematic.class);
+        RecipeType.create(FirstContact.ID, "radars_dish_3d", RadarSchematic.class);
     private RadarCategory category;
     @Override public ResourceLocation getPluginUid() {
-        return ResourceLocation.fromNamespaceAndPath(FirstContact.ID, "jei_radar");
+        return ResourceLocation.fromNamespaceAndPath(FirstContact.ID, "jei_real_radar");
     }
     @Override public void registerCategories(IRecipeCategoryRegistration reg) {
         category = new RadarCategory(reg.getJeiHelpers().getGuiHelper());
@@ -47,81 +59,152 @@ public final class RadarJeiPlugin implements IModPlugin {
     }
     @Override public void registerRecipeCatalysts(IRecipeCatalystRegistration reg) {
         reg.addRecipeCatalyst(new ItemStack(FirstContact.RADIO_ITEM.get()), TYPE);
+        if (BuiltInRegistries.ITEM.containsKey(ResourceLocation.parse(RadarIntegration.BEARING)))
+            reg.addRecipeCatalyst(item(RadarIntegration.BEARING), TYPE);
+    }
+
+    private record Part(int x,int y,int z,String block) {}
+    private static final List<Part> MODEL = makeModel();
+    private static List<Part> makeModel() {
+        List<Part> list = new ArrayList<>();
+        list.add(new Part(0,0,0,RadarIntegration.BEARING));
+        list.add(new Part(0,1,0,"create:brass_casing"));
+        list.add(new Part(0,2,0,RadarIntegration.RECEIVER));
+        for (int x=-6;x<=6;x++) for(int z=-6;z<=6;z++) {
+            double r=Math.hypot(x,z);
+            if (r>6.2) continue;
+            int y = r>=5.2?5:r>=3.9?4:3;
+            // Radar receiver must touch the moving assembly, and radar panels
+            // are the real radar parts counted by RadarBearingBlockEntity.
+            list.add(new Part(x,y,z,r>=4.4?RadarIntegration.DISH:RadarIntegration.PLATE));
+            if (r>=5.65) list.add(new Part(x,y+1,z,RadarIntegration.DISH));
+        }
+        return List.copyOf(list);
     }
 
     private static final class RadarCategory implements IRecipeCategory<RadarSchematic> {
         private final IDrawable icon;
+        private float yaw=30,pitch=24,zoom=1.0f;
+        private int layer=-1;
+        private boolean autorotate=true;
+        private final Map<String,Integer> count = new HashMap<>();
         RadarCategory(IGuiHelper helper) {
-            icon = helper.createDrawableItemStack(item("create:mechanical_bearing"));
+            icon=helper.createDrawableItemStack(item(RadarIntegration.BEARING));
+            for(Part p:MODEL)count.merge(p.block(),1,Integer::sum);
         }
-        @Override public RecipeType<RadarSchematic> getRecipeType() { return TYPE; }
-        @Override public Component getTitle() { return Component.literal("Радиолокационная тарелка Create"); }
-        @Override public IDrawable getIcon() { return icon; }
-        @Override public int getWidth() { return 180; }
-        @Override public int getHeight() { return 166; }
+        @Override public RecipeType<RadarSchematic> getRecipeType(){return TYPE;}
+        @Override public Component getTitle(){return Component.literal("Реальный радар Create: Radars (3D)");}
+        @Override public IDrawable getIcon(){return icon;}
+        @Override public int getWidth(){return 190;}
+        @Override public int getHeight(){return 188;}
+        @Override public boolean needsRecipeBorder(){return false;}
 
-        @Override public void setRecipe(IRecipeLayoutBuilder b, RadarSchematic schematic,
-                                        IFocusGroup focus) {
-            b.addSlot(RecipeIngredientRole.INPUT, 10, 140).addItemStack(item("create:mechanical_bearing"));
-            b.addSlot(RecipeIngredientRole.INPUT, 39, 140).addItemStack(item("create:brass_casing"));
-            b.addSlot(RecipeIngredientRole.INPUT, 68, 140).addItemStack(item("minecraft:cut_copper"));
-            b.addSlot(RecipeIngredientRole.INPUT, 97, 140).addItemStack(item("minecraft:lightning_rod"));
+        @Override public void setRecipe(IRecipeLayoutBuilder builder,RadarSchematic schematic,
+                                        IFocusGroup group) {
+            builder.addSlot(RecipeIngredientRole.INPUT, 9, 164).addItemStack(item(RadarIntegration.BEARING));
+            builder.addSlot(RecipeIngredientRole.INPUT, 36, 164).addItemStack(item(RadarIntegration.RECEIVER));
+            builder.addSlot(RecipeIngredientRole.INPUT, 63, 164).addItemStack(item(RadarIntegration.PLATE));
+            builder.addSlot(RecipeIngredientRole.INPUT, 90, 164).addItemStack(item(RadarIntegration.DISH));
+            builder.addSlot(RecipeIngredientRole.INPUT, 117, 164).addItemStack(item("create:brass_casing"));
+        }
+
+        @Override public void createRecipeExtras(IRecipeExtrasBuilder extras,
+                                                 RadarSchematic recipe,IFocusGroup group) {
+            extras.addInputHandler(new IJeiInputHandler() {
+                @Override public ScreenRectangle getArea(){return new ScreenRectangle(0,0,190,153);}
+                @Override public boolean handleInput(double mx,double my,IJeiUserInput input) {
+                    if(input.getKey().getType()!=InputConstants.Type.MOUSE
+                      ||input.getKey().getValue()!=0 ||my<127) return false;
+                    if(!input.isSimulate()) {
+                        if(mx<46) {layer=(layer+2)%9-1;} // cycle -1,1,2,..7
+                        else if(mx<91) {layer=-1;}
+                        else if(mx<143) {autorotate=!autorotate;}
+                        else {yaw+=45;}
+                    }
+                    return true;
+                }
+                @Override public boolean handleMouseScrolled(double mx,double my,double dx,double dy) {
+                    zoom=Math.clamp(zoom+(float)dy*.13f,.45f,1.95f);
+                    return true;
+                }
+                @Override public boolean handleMouseDragged(double mx,double my,
+                      InputConstants.Key mouseKey,double dx,double dy) {
+                    if(mouseKey.getType()!=InputConstants.Type.MOUSE
+                      ||mouseKey.getValue()!=0 ||my>127) return false;
+                    yaw+=(float)dx*1.4f;
+                    pitch=Math.clamp(pitch+(float)dy*.9f,-60f,65f);
+                    autorotate=false;
+                    return true;
+                }
+            });
         }
 
         @Override public void draw(RadarSchematic schematic,
-                                   mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
-                                   GuiGraphics g, double mouseX, double mouseY) {
-            g.fill(0, 0, 180, 136, 0xFF172128);
-            g.renderOutline(0, 0, 180, 136, 0xFFC5A35B);
-            g.drawString(Minecraft.getInstance().font, "3D / CREATE RADAR / Ø13", 7, 6, 0xFFFFD28D, false);
-            g.drawString(Minecraft.getInstance().font, "Автовращение • масштаб: 5", 7, 118, 0xFFB9C2BE, false);
-            g.drawString(Minecraft.getInstance().font, "Крепить к Mechanical Bearing", 7, 128, 0xFFB9C2BE, false);
-
-            // Render actual baked block models, not flat item icons or a 2D drawing.
-            PoseStack pose = g.pose();
+                     mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
+                     GuiGraphics g,double mouseX,double mouseY) {
+            g.fill(0,0,190,157,0xFF172226);
+            g.renderOutline(0,0,190,157,0xFFB69A5E);
+            g.drawString(Minecraft.getInstance().font,"RADAR CONTROL / Ø13",7,6,0xFFEDCEA0,false);
+            String desc="Create: Radars • рабочий Radar Bearing";
+            g.drawString(Minecraft.getInstance().font,desc,6,16,0xFF9BBDB0,false);
+            drawButtons(g);
+            if(!BuiltInRegistries.BLOCK.containsKey(ResourceLocation.parse(RadarIntegration.BEARING))) {
+                g.drawCenteredString(Minecraft.getInstance().font,
+                   "Установите Create: Radars",95,66,0xFFFF8C75);
+                return;
+            }
+            PoseStack pose=g.pose();
             pose.pushPose();
-            pose.translate(90, 95, 240);
-            pose.mulPose(Axis.XP.rotationDegrees(27));
+            pose.translate(95,102,270);
+            pose.mulPose(Axis.XP.rotationDegrees(pitch));
             pose.mulPose(Axis.YP.rotationDegrees(
-                (float)((System.currentTimeMillis() / 90L) % 360L)));
-            pose.scale(4.4f, -4.4f, 4.4f);
-            pose.translate(-0.5, -2.2, -0.5);
-            var mc = Minecraft.getInstance();
-            var buffers = mc.renderBuffers().bufferSource();
-            for (FirstContact.Blueprint.Part part : FirstContact.Blueprint.parts()) {
-                ResourceLocation id = ResourceLocation.tryParse(part.id());
-                if (id == null || !BuiltInRegistries.BLOCK.containsKey(id)) continue;
-                Block block = BuiltInRegistries.BLOCK.get(id);
-                BlockState state = block.defaultBlockState();
+                yaw+(autorotate?(float)((System.currentTimeMillis()/75L)%360):0)));
+            pose.scale(4.5f*zoom,-4.5f*zoom,4.5f*zoom);
+            pose.translate(-.5,-3.0,-.5);
+            var mc=Minecraft.getInstance();
+            var buffers=mc.renderBuffers().bufferSource();
+            for(Part part:MODEL) {
+                if(layer>=0 && part.y()>layer)continue;
+                ResourceLocation id=ResourceLocation.parse(part.block());
+                if(!BuiltInRegistries.BLOCK.containsKey(id))continue;
+                Block block=BuiltInRegistries.BLOCK.get(id);
+                BlockState state=block.defaultBlockState();
                 pose.pushPose();
-                pose.translate(part.x(), part.y(), part.z());
-                mc.getBlockRenderer().renderSingleBlock(state, pose, buffers, 0xF000F0,
-                        OverlayTexture.NO_OVERLAY);
+                pose.translate(part.x(),part.y(),part.z());
+                mc.getBlockRenderer().renderSingleBlock(state,pose,buffers,0xF000F0,
+                    OverlayTexture.NO_OVERLAY);
                 pose.popPose();
             }
             buffers.endBatch();
             pose.popPose();
         }
-
-        @Override public List<Component> getTooltipStrings(RadarSchematic schematic,
-                                                             mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
-                                                             double mouseX, double mouseY) {
-            if (mouseY > 116) return List.of();
-            Map<String, Integer> needed = new HashMap<>();
-            for (FirstContact.Blueprint.Part p : FirstContact.Blueprint.parts())
-                needed.merge(p.id(), 1, Integer::sum);
-            return List.of(
-                Component.literal("Радар Create • 3D-схема"),
-                Component.literal("Построй вручную по слоям; центр — Mechanical Bearing."),
-                Component.literal("Латунь: " + needed.getOrDefault("create:brass_casing",0)
-                    + " • Медь: " + needed.getOrDefault("minecraft:cut_copper",0)),
-                Component.literal("Затем: /firstcontact radar calibrate"),
-                Component.literal("Подавай вращение на Mechanical Bearing."));
+        private void drawButtons(GuiGraphics g){
+            String[] captions={"СЛОЙ "+(layer<0?"ВСЕ":layer),"ВСЕ","АВТО "+(autorotate?"ON":"OFF"),"↻ 45°"};
+            int[] starts={4,48,93,145};int[] ends={46,91,143,186};
+            for(int i=0;i<captions.length;i++){
+                g.fill(starts[i],130,ends[i],149,0xFF493529);
+                g.renderOutline(starts[i],130,ends[i]-starts[i],19,0xFFD0A769);
+                g.drawCenteredString(Minecraft.getInstance().font,captions[i],
+                      (starts[i]+ends[i])/2,136,0xFFE9D6A7);
+            }
+            g.drawString(Minecraft.getInstance().font,"ЛКМ+двигать: вращать  •  колесо: масштаб",
+                3,151,0xFF9DA8A1,false);
         }
-
-        private static ItemStack item(String id) {
-            ResourceLocation key = ResourceLocation.parse(id);
-            return new ItemStack(BuiltInRegistries.ITEM.get(key));
+        @Override public void getTooltip(ITooltipBuilder tooltip,RadarSchematic schematic,
+                     mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
+                     double mx,double my) {
+            if(my>126)return;
+            tooltip.add(Component.literal("Настоящие детали Create: Radars — пример компоновки"));
+            tooltip.add(Component.literal("Radar Bearing: "+count.getOrDefault(RadarIntegration.BEARING,0)
+                     +" / Receiver: "+count.getOrDefault(RadarIntegration.RECEIVER,0)));
+            tooltip.add(Component.literal("Dish: "+count.getOrDefault(RadarIntegration.DISH,0)
+                     +" / Plate: "+count.getOrDefault(RadarIntegration.PLATE,0)));
+            tooltip.add(Component.literal("Все части должны соединиться; в Create: Radars нужен Receiver."));
+            tooltip.add(Component.literal("Привяжи: /firstcontact radar link"));
         }
+    }
+    private static ItemStack item(String id) {
+        ResourceLocation key=ResourceLocation.parse(id);
+        return new ItemStack(BuiltInRegistries.ITEM.get(key));
     }
 }

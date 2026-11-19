@@ -1,19 +1,24 @@
 plugins {
-    id 'java'
-    id 'net.neoforged.moddev' version '2.0.141'
+ id 'java'
+ id 'net.neoforged.moddev' version '2.0.141'
 }
-group = 'dev.zunserz'
-version = '0.1.0'
-base.archivesName = 'first-contact-neoforge-1.21.1'
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
-repositories {
-    maven { url = 'https://maven.blamejared.com' }
+group='dev.zunserz'
+version='0.2.0'
+base.archivesName='first-contact-neoforge-1.21.1'
+java.toolchain.languageVersion=JavaLanguageVersion.of(21)
+repositories { maven { url='https://maven.blamejared.com' } }
+neoForge { version='21.1.250'; runs { server { server(); programArgument '--nogui' }; client { client() } } }
+dependencies { compileOnly "mezz.jei:jei-1.21.1-neoforge:19.27.0.350" }
+tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8' }
+tasks.register('generateFirstContactAssets', Exec) {
+ workingDir projectDir
+ def py=System.getenv('PYTHON') ?: (System.getProperty('os.name').toLowerCase().contains('windows') ? 'python' : 'python3')
+ commandLine py, 'tools/generate_assets.py'
+ inputs.file 'tools/generate_assets.py'
+ outputs.file 'src/main/resources/assets/firstcontact/models/block/radio_receiver.json'
+ outputs.file 'src/main/resources/assets/firstcontact/sounds/morse_dot.ogg'
+ outputs.file 'src/main/resources/assets/firstcontact/sounds/morse_dash.ogg'
+ outputs.file 'src/main/resources/assets/firstcontact/sounds/radio_static.ogg'
+ outputs.file 'src/main/resources/assets/firstcontact/sounds.json'
 }
-neoForge {
-    version = '21.1.250'
-    runs { server { server(); programArgument '--nogui' }; client { client() } }
-}
-dependencies {
-    compileOnly "mezz.jei:jei-1.21.1-neoforge:19.27.0.350"
-}
-tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.named('processResources') { dependsOn 'generateFirstContactAssets' }

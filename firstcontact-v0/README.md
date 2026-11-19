@@ -1,32 +1,41 @@
-# Project: First Contact — 0.1.0 (prototype)
+# Project: First Contact — версия 0.2.0
 
-Independent story mod for Minecraft 1.21.1 / NeoForge / Java 21. Author: Zunserz.
+Отдельный сюжетный мод для Minecraft 1.21.1 / NeoForge 21.1 / Java 21. Автор Zunserz.
 
-### Implemented
+## Изменения 0.2.0
+- **Радиоприёмник:** сохранён 3D-ретро-корпус, но вместо текстур ванильного золотого блока добавлены уникальные пиксель-арт текстуры тёмного ореха, матовой латуни, меди, бакелита, сетки динамика и фосфорного стекла. Детали фронтальной части разведены по глубине против z-fighting.
+- **GUI:** ретро-пульт в стиле Create с латунными кнопками, читаемыми цифровыми показаниями, настройкой частот кнопками/колесом, архивом и расшифровкой. GUI больше не использует серые стандартные кнопки.
+- **Прослушивание:** раньше до получения записи кнопка молчала; теперь до сигнала играет проверка динамика (три точки), а после получения — полноценная последовательность Морзе STOP. Созданы оригинальные OGG для точки (0.15 с), тире (0.45 с), радио-помехи.
+- **Create: Radars:** используются настоящий контроллер `create_radar:radar_bearing`, его сборка, количество radar dish/plate, кинетическая скорость, дальность и реальные обнаруженные цели. Декоративный псевдорадар больше не участвует.
+- **Create: Aeronautics / Sable:** при `/firstcontact ship verify` проверяется нахождение игрока на/в реально собранном физическом корабле (Sable sublevel). Пока **не проверяются двигатели и готовность космического пуска**.
+- **JEI:** 3D-пример из реальных блоков Create: Radars, вращение мышью, приближение колесом, переключение слоёв.
+- **Новая команда `/firstcontact ready`:** OP подтверждает «всё готово» без радарной и корабельной сборки. Через 60 игровых секунд появляется сохранённая передача на 98.7 MHz. Для сброса — `/firstcontact ready reset`.
 
-- Custom 3D retro wooden/brass radio-receiver block with a model of multiple cuboids, speaker grille, tuning window and two knobs.
-- Right-click GUI: tune to 98.7 MHz, replay Morse ... - --- .--. (STOP), read first decoded message.
-- Story triggers after BOTH radar calibration/rotation and spaceship readiness. Spaceship detection is a test operator command for now.
-- SavedData persists world story flags and individual radio frequencies across restarts. The radio archive delivers a message after 60 seconds of game time, without notifying chat.
-- Built-in JEI category draws real rotating 3D block models of the Create-based Ø13 radar, using the same block positions used for calibration.
-- Radar uses real Create Mechanical Bearing and Create kinetic power. The mod detects speed on the bearing via reflection (without a hard API compile dependency).
-- Works in multiplayer; no forced two-player online requirement.
+## Установка
+- Minecraft 1.21.1, NeoForge, Create 6.0.x (обязательно).
+- Create: Radars `create_radar` (для реального радара), Create: Aeronautics + Sable (для реального корабля).
+- JEI 19.x на клиенте (для 3D-схемы).
+- Сам First Contact установить на сервер и каждый клиент.
 
-### How to test
+## Быстрый тест радио
+1. `/give @s firstcontact:radio_receiver`; поставить и открыть по ПКМ.
+2. Нажать «ПРОСЛУШАТЬ / ТЕСТ» до сюжета — услышишь три тестовых звука.
+3. `/firstcontact ready` (OP) — начать 60-секундное ожидание; сообщение не возникает в чате.
+4. Снова открыть радио на частоте 98.7 MHz, нажать прослушивание — услышишь запись `... - --- .--.`; можно расшифровать.
 
-1. Install First Contact, Create 6.0.8–6.0.x, NeoForge 1.21.1 on the server and client. JEI 19.x on client for 3D blueprint.
-2. Give yourself the radio: /give @s firstcontact:radio_receiver. Place and right-click; by default it is tuned to 98.7 MHz.
-3. In JEI check the Create Radar Schematic category. Build the copper Ø13 dish atop an UP-facing Create Mechanical Bearing, then bond the parts with Create Super Glue for physical rotation.
-4. While it is stopped, stand near the bearing and run /firstcontact radar calibrate. The server checks all expected blocks. Correct any missing blocks.
-5. Power the Create bearing and check /firstcontact status. If moving=false, verify actual kinetic motion; during API compatibility tests an operator can instead run /firstcontact radar test_motion.
-6. An operator enters /firstcontact ship ready to simulate completion of the spacecraft. After 60 seconds of in-game time, the receiver archives an incoming message.
-7. Open the receiver, replay Morse and decode. For immediate testing: /firstcontact radio deliver; for clearing the signal: /firstcontact radio reset.
+## Тест настоящей интеграции
+1. Собрать **радар именно Create: Radars**, используя Radar Bearing, Radar Receiver и от 8 радарных панелей; правильно собрать вращающееся устройство и подать кинетическую энергию Create.
+2. `/firstcontact radar link` (или `/firstcontact radar calibrate`) возле контроллера привязывает настоящий радар; `/firstcontact status` показывает движется ли он, число панелей, дальность и количество целей.
+3. На борту реально собранного корабля Create: Aeronautics выполнить `/firstcontact ship verify`. Если Sable обнаружит физический sublevel, готовность корабля будет сохранена.
+4. Когда оба условия есть, мод записывает радио-сигнал с задержкой; он остаётся в архиве после перезапуска.
 
-### Prototype limitations
+## Администраторские команды
+`/firstcontact status`; `/firstcontact ready`; `/firstcontact ready reset`; `/firstcontact radar link`; `/firstcontact radar test_motion`; `/firstcontact ship verify`; `/firstcontact ship ready`; `/firstcontact radio deliver`; `/firstcontact radio reset`.
 
-- The spacecraft is not yet recognized by a structure checker; ship ready is an OP-only developer toggle.
-- JEI preview is an actual rotating 3D view, but there is not yet an interactive layer selection or .nbt export for Schematicannon.
-- Animation, glue and rotational mechanics are performed by Create; no custom spinning radar entity is supplied.
-- The Morse preview uses Minecraft note-block sounds; these are short tones, not a generated continuous CW oscillator.
-- No subsequent chapters, alien NPCs, animal behavior changes, or new dimensions yet.
-- Other existing mods in this repository are unchanged.
+## Технические ограничения
+Проверку реального радара надо инициировать через **link**, после чего состояние автоматически обновляется. 3D-схема — демонстрационная композиция из оригинальных радарных блоков, НЕ универсальный обязательный рецепт и НЕ файл для Schematicannon. Определение Sable корабля не доказывает наличие двигателей. Сюжет после первого сигнала пока не реализован. Проверку запуска в полной пользовательской сборке необходимо провести отдельно.
+
+## Сборка
+Gradle 9.2.1, JDK 21, Python 3, ffmpeg. Команда `gradle -p firstcontact-v0 clean build`. Во время сборки `tools/generate_assets.py` генерирует текстуры, модель и авторские OGG. На Windows при необходимости задать `PYTHON=python`.
+
+**Masterki Economy и Player Utilities не затронуты.**

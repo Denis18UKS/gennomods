@@ -1,4 +1,4 @@
-name: Build First Contact prototype (NeoForge 1.21.1)
+name: Build First Contact (NeoForge 1.21.1)
 on:
   push:
     branches: [feature/first-contact-prototype]
@@ -21,37 +21,47 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
-      - name: Compile NeoForge + JEI integration
+      - name: Verify asset tools
+        run: |
+          python3 --version
+          ffmpeg -version | head -n 1
+      - name: Compile NeoForge and JEI (synthesize audio/assets)
         run: gradle -p firstcontact-v0 clean build --no-daemon --stacktrace
-      - name: Verify jar contents
+      - name: Verify JAR classfiles, radio textures and original sounds
         run: |
           set -euo pipefail
           JAR=$(find firstcontact-v0/build/libs -maxdepth 1 -name '*.jar' ! -name '*sources*' | head -n 1)
           test -f "$JAR"
           jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/FirstContact.class'
+          jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/RadarIntegration.class'
+          jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/AeronauticsIntegration.class'
           jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/jei/RadarJeiPlugin.class'
+          jar tf "$JAR" | grep -q 'assets/firstcontact/textures/block/aged_brass.png'
           jar tf "$JAR" | grep -q 'assets/firstcontact/models/block/radio_receiver.json'
-          echo "Validated $JAR"
+          jar tf "$JAR" | grep -q 'assets/firstcontact/sounds/morse_dot.ogg'
+          jar tf "$JAR" | grep -q 'assets/firstcontact/sounds/morse_dash.ogg'
+          jar tf "$JAR" | grep -q 'assets/firstcontact/sounds/radio_static.ogg'
+          echo "VERIFIED: $JAR"
       - uses: actions/upload-artifact@v4
         with:
-          name: firstcontact-jar
+          name: firstcontact-0.2.0-jar
           path: firstcontact-v0/build/libs/*.jar
-      - name: Package sources
+      - name: Archive source project
         run: git archive --format=zip --output=/tmp/firstcontact-sources.zip HEAD firstcontact-v0
       - uses: actions/upload-artifact@v4
         with:
-          name: firstcontact-sources
+          name: firstcontact-0.2.0-sources
           path: /tmp/firstcontact-sources.zip
-      - name: Publish built JAR in dist
+      - name: Publish verified JAR
         run: |
           set -euo pipefail
           mkdir -p dist
           JAR=$(find firstcontact-v0/build/libs -maxdepth 1 -name '*.jar' ! -name '*sources*' | head -n 1)
-          cp "$JAR" dist/First-Contact-0.1.0-NeoForge-1.21.1.jar
+          cp "$JAR" dist/First-Contact-0.2.0-NeoForge-1.21.1.jar
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist/First-Contact-0.1.0-NeoForge-1.21.1.jar
+          git add -f dist/First-Contact-0.2.0-NeoForge-1.21.1.jar
           if ! git diff --cached --quiet; then
-            git commit -m "Publish First Contact 0.1.0 jar [skip ci]"
+            git commit -m "Publish First Contact 0.2.0 jar [skip ci]"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
