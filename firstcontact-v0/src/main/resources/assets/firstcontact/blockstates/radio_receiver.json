@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "firstcontact:block/radio_receiver"
+    },
+    "facing=south": {
+      "model": "firstcontact:block/radio_receiver",
+      "y": 180
+    },
+    "facing=east": {
+      "model": "firstcontact:block/radio_receiver",
+      "y": 90
+    },
+    "facing=west": {
+      "model": "firstcontact:block/radio_receiver",
+      "y": 270
+    }
+  }
+}

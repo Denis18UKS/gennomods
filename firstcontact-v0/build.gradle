@@ -1,0 +1,19 @@
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '2.0.141'
+}
+group = 'dev.zunserz'
+version = '0.1.0'
+base.archivesName = 'first-contact-neoforge-1.21.1'
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+repositories {
+    maven { url = 'https://maven.blamejared.com' }
+}
+neoForge {
+    version = '21.1.250'
+    runs { server { server(); programArgument '--nogui' }; client { client() } }
+}
+dependencies {
+    compileOnly "mezz.jei:jei-1.21.1-neoforge:19.27.0.350"
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }

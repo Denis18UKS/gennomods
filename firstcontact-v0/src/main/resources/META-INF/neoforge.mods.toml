@@ -1,0 +1,33 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="firstcontact"
+version="0.1.0"
+displayName="Project: First Contact"
+authors="Zunserz"
+description="Create-powered rotating radar, retro 3D radio receiver, and the first recorded Morse signal."
+[[dependencies.firstcontact]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.firstcontact]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.firstcontact]]
+modId="create"
+type="required"
+versionRange="[6.0.8,6.1.0)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.firstcontact]]
+modId="jei"
+type="optional"
+versionRange="[19,)"
+ordering="NONE"
+side="CLIENT"
