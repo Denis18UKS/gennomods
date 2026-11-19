@@ -1,6 +1,7 @@
 package dev.zunserz.firstcontact;
 
 import com.mojang.brigadier.Command;
+import com.mojang.serialization.MapCodec;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +62,8 @@ public final class FirstContact {
     }
 
     public static final class RadioBlock extends HorizontalDirectionalBlock {
+        public static final MapCodec<RadioBlock> CODEC = simpleCodec(RadioBlock::new);
+        @Override protected MapCodec<? extends HorizontalDirectionalBlock> codec() { return CODEC; }
         RadioBlock(Properties properties) {
             super(properties);
             registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH));
