@@ -20,7 +20,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
  * Dedicated original OGG assets distinguish Morse dot and dash durations.
  */
 public final class RadioScreen extends Screen {
-    private static final int W = 344, H = 230;
+    private static final int W = 344, H = 202;
     private static final int SIGNAL_FREQ = 987;
     private static final String MORSE = "... - --- .--."; // STOP
     private static final List<Tone> MESSAGE = sequence(MORSE);
@@ -49,11 +49,11 @@ public final class RadioScreen extends Screen {
 
     @Override protected void init() {
         int x = (width-W)/2, y=(height-H)/2;
-        addRenderableWidget(new BrassButton(x+17,y+173,65,22,Component.literal("− 0.5"),()->tune(-5)));
-        addRenderableWidget(new BrassButton(x+88,y+173,65,22,Component.literal("+ 0.5"),()->tune(5)));
-        addRenderableWidget(new BrassButton(x+160,y+173,167,22,
+        addRenderableWidget(new BrassButton(x+17,y+146,65,20,Component.literal("− 0.5"),()->tune(-5)));
+        addRenderableWidget(new BrassButton(x+88,y+146,65,20,Component.literal("+ 0.5"),()->tune(5)));
+        addRenderableWidget(new BrassButton(x+160,y+146,167,20,
             Component.literal("ПРОСЛУШАТЬ / ТЕСТ"),this::play));
-        addRenderableWidget(new BrassButton(x+160,y+202,167,20,
+        addRenderableWidget(new BrassButton(x+160,y+174,167,20,
             Component.literal("РАСШИФРОВАТЬ"),this::decode));
     }
     private boolean hasSignal() { return state.messageReady() && state.frequency() == SIGNAL_FREQ; }
@@ -141,46 +141,57 @@ public final class RadioScreen extends Screen {
     }
 
     @Override public void render(GuiGraphics g, int mouseX,int mouseY,float partial) {
-        renderBackground(g,mouseX,mouseY,partial);
+        // Important: do NOT invoke Screen.renderBackground here. On 1.21.1
+        // this schedules a blur/post-process that was blurring OUR radio panel
+        // (but not the separately drawn widget layer). Use a flat dark veil.
+        // Draw the GUI and buttons exactly once, all after the world pass.
+        g.fill(0, 0, width, height, 0xB9000000);
         int x=(width-W)/2,y=(height-H)/2;
         // Panel: thin multi-layer frames, high contrast pixel-art, non-blurred opaque fill.
         plate(g,x,y,x+W,y+H,0xFF2B1C18,0xFF9C733E);
         g.renderOutline(x+4,y+4,W-8,H-8,0xFF573726);
         g.renderOutline(x+8,y+8,W-16,H-16,0xFFD4AC63);
-        plate(g,x+15,y+14,x+W-15,y+36,0xFF392923,0xFFC19A56);
+        plate(g,x+15,y+9,x+W-15,y+30,0xFF392923,0xFFC19A56);
         g.drawCenteredString(font,"ZUNSERZ  •  RADIO TELEGRAPH  •  MK-II",
-            x+W/2,y+21,0xFFF3D69A);
+            x+W/2,y+15,0xFFF3D69A);
         // Main tuning window: green phosphor with calibrated scale.
-        plate(g,x+17,y+47,x+W-17,y+106,0xFF10231E,0xFFB08A50);
-        g.drawString(font,"RECEIVER / FREQUENCY",x+26,y+53,0xFF8BC3AB,false);
+        plate(g,x+17,y+36,x+W-17,y+91,0xFF10231E,0xFFB08A50);
+        g.drawString(font,"RECEIVER / FREQUENCY",x+26,y+42,0xFF8BC3AB,false);
         g.drawCenteredString(font,
             String.format(Locale.ROOT,"%05.1f MHz",state.frequency()/10.0),
-            x+W/2,y+67,0xFFC4F4D6);
-        g.fill(x+33,y+94,x+W-33,y+96,0xFF42594B);
+            x+W/2,y+57,0xFFC4F4D6);
+        g.fill(x+33,y+80,x+W-33,y+82,0xFF42594B);
         int markerX=x+33+(state.frequency()-880)*(W-66)/200;
-        g.fill(markerX-1,y+87,markerX+2,y+99,0xFFF8C76E);
-        g.drawString(font,"88",x+23,y+87,0xFF8AA999,false);
-        g.drawString(font,"108",x+W-47,y+87,0xFF8AA999,false);
+        g.fill(markerX-1,y+73,markerX+2,y+85,0xFFF8C76E);
+        g.drawString(font,"88",x+23,y+74,0xFF8AA999,false);
+        g.drawString(font,"108",x+W-47,y+74,0xFF8AA999,false);
         // Message tape: the morse is shown only when the station actually received it.
-        plate(g,x+17,y+115,x+W-17,y+162,0xFF191917,0xFF715638);
+        plate(g,x+17,y+98,x+W-17,y+139,0xFF191917,0xFF715638);
         boolean ready=hasSignal();
         int led=ready && blinkTicks%32<20 ? 0xFF75DB9C : 0xFF6A614E;
-        g.fill(x+25,y+123,x+29,y+127,led);
+        g.fill(x+25,y+105,x+29,y+109,led);
         g.drawString(font,ready?"АРХИВ: НЕИЗВЕСТНАЯ ПЕРЕДАЧА":"ЭФИР: СИГНАЛ ОТСУТСТВУЕТ",
-            x+36,y+121,ready?0xFFF3C987:0xFFAAA096,false);
+            x+36,y+104,ready?0xFFF3C987:0xFFAAA096,false);
         if (ready) {
-            g.drawCenteredString(font,MORSE,x+W/2,y+135,0xFFF7CD8C);
+            g.drawCenteredString(font,MORSE,x+W/2,y+116,0xFFF7CD8C);
             g.drawCenteredString(font,decoding?"STOP  /  ОСТАНОВИТЕ ЗАПУСК"
-                : "ЗАПИСЬ 01  •  НЕ РАСШИФРОВАНА",x+W/2,y+148,
+                : "ЗАПИСЬ 01  •  НЕ РАСШИФРОВАНА",x+W/2,y+128,
                 decoding?0xFFEEB19B:0xFFBBBAA7);
         } else {
-            g.drawCenteredString(font,"— — —   Ш У М   Э Ф И Р А   — — —",x+W/2,y+143,
+            g.drawCenteredString(font,"— — —   Ш У М   Э Ф И Р А   — — —",x+W/2,y+117,
                 0xFF81766D);
         }
-        g.drawString(font,"ШАГ НАСТРОЙКИ: 0.5 MHz",x+18,y+201,0xFFB39465,false);
-        g.drawString(font,elapsed>=0?"► ИДЁТ ВОСПРОИЗВЕДЕНИЕ":"● "+hint,
-            x+17,y+216,elapsed>=0?0xFFA8F0BD:0xFFE1B878,false);
-        super.render(g,mouseX,mouseY,partial);
+        g.drawString(font,"ШАГ: 0.5 MHz",x+18,y+173,0xFFD2B37A,false);
+        String status = elapsed>=0 ? "► ВОСПРОИЗВЕДЕНИЕ"
+            : hasSignal() ? "● ЗАПИСЬ ПОЛУЧЕНА"
+            : (hint.isEmpty() ? "● ОЖИДАНИЕ СИГНАЛА" : hint);
+        g.drawString(font,font.plainSubstrByWidth(status,132),
+            x+17,y+184,elapsed>=0?0xFFA8F0BD:0xFFE1B878,false);
+        // Never call super.render() after drawing this panel: on some Minecraft
+        // 1.21.1 modpack pipelines it triggers a second screen background blur.
+        // Render only our actual controls, without any background/post effect.
+        for (var widget : this.renderables)
+            widget.render(g, mouseX, mouseY, partial);
     }
 
     @Override public boolean isPauseScreen() { return false; }
