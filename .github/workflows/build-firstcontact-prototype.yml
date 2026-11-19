@@ -21,10 +21,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.2.1'
-      - name: Verify asset tools
+      - name: Install original-audio encoder
         run: |
-          python3 --version
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          command -v ffmpeg
           ffmpeg -version | head -n 1
+          python3 --version
       - name: Compile NeoForge and JEI (synthesize audio/assets)
         run: gradle -p firstcontact-v0 clean build --no-daemon --stacktrace
       - name: Verify JAR classfiles, radio textures and original sounds
