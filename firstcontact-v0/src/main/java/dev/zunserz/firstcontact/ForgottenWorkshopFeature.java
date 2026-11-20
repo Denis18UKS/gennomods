@@ -52,7 +52,7 @@ public final class ForgottenWorkshopFeature extends Feature<NoneFeatureConfigura
             // Keep trees, village structures and other generated features intact.
             for(int rise=0;rise<=5;rise++) {
                 BlockState above=level.getBlockState(new BlockPos(x,h+rise,z));
-                if(!above.isAir() && !above.is(Blocks.GRASS)
+                if(!above.isAir()
                     && !above.is(Blocks.SHORT_GRASS) && !above.is(Blocks.TALL_GRASS))
                     return false;
             }
