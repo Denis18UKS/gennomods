@@ -44,6 +44,8 @@ jobs:
           jar tf "$JAR" | grep -q 'data/firstcontact/neoforge/biome_modifier/forgotten_workshop.json'
           jar tf "$JAR" | grep -q 'data/firstcontact/worldgen/configured_feature/forgotten_workshop.json'
           jar tf "$JAR" | grep -q 'data/firstcontact/recipe/radio_receiver.json'
+          jar tf "$JAR" | grep -q 'assets/firstcontact/models/item/incomplete_radio_receiver.json'
+          jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/jei/RadarJeiPlugin.class'
           jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/RadarIntegration.class'
           jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/AeronauticsIntegration.class'
           jar tf "$JAR" | grep -q 'dev/zunserz/firstcontact/jei/RadarJeiPlugin.class'
@@ -53,26 +55,43 @@ jobs:
           jar tf "$JAR" | grep -q 'assets/firstcontact/sounds/morse_dash.ogg'
           jar tf "$JAR" | grep -q 'assets/firstcontact/sounds/radio_static.ogg'
           echo "VERIFIED: $JAR"
+      - name: Validate the real Create Sequenced Assembly recipe in JAR
+        run: |
+          python3 - <<'PY'
+          import glob, json, zipfile
+          jars=[p for p in glob.glob("firstcontact-v0/build/libs/*.jar") if "sources" not in p]
+          assert len(jars)==1, jars
+          with zipfile.ZipFile(jars[0]) as jar:
+              r=json.loads(jar.read("data/firstcontact/recipe/radio_receiver.json"))
+              assert r["type"]=="create:sequenced_assembly", r["type"]
+              assert r["transitional_item"]["id"]=="firstcontact:incomplete_radio_receiver"
+              assert r["results"][0]["id"]=="firstcontact:radio_receiver"
+              assert r["loops"]==1
+              steps=[step["type"] for step in r["sequence"]]
+              assert steps.count("create:deploying")>=5 and steps.count("create:pressing")>=2
+              assert "assets/firstcontact/models/item/incomplete_radio_receiver.json" in jar.namelist()
+              print("Verified actual native Create sequenced crafting with",len(steps),"operations")
+          PY
       - uses: actions/upload-artifact@v4
         with:
-          name: firstcontact-0.4.0-jar
+          name: firstcontact-0.5.0-jar
           path: firstcontact-v0/build/libs/*.jar
       - name: Archive source project
         run: git archive --format=zip --output=/tmp/firstcontact-sources.zip HEAD firstcontact-v0
       - uses: actions/upload-artifact@v4
         with:
-          name: firstcontact-0.4.0-sources
+          name: firstcontact-0.5.0-sources
           path: /tmp/firstcontact-sources.zip
       - name: Publish verified JAR
         run: |
           set -euo pipefail
           mkdir -p dist
           JAR=$(find firstcontact-v0/build/libs -maxdepth 1 -name '*.jar' ! -name '*sources*' | head -n 1)
-          cp "$JAR" dist/First-Contact-0.4.0-NeoForge-1.21.1.jar
+          cp "$JAR" dist/First-Contact-0.5.0-NeoForge-1.21.1.jar
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist/First-Contact-0.4.0-NeoForge-1.21.1.jar
+          git add -f dist/First-Contact-0.5.0-NeoForge-1.21.1.jar
           if ! git diff --cached --quiet; then
-            git commit -m "Publish First Contact 0.4.0 jar [skip ci]"
+            git commit -m "Publish First Contact 0.5.0 jar [skip ci]"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi

@@ -1,5 +1,6 @@
 {
   "block.firstcontact.radio_receiver": "Ламповый радиоприёмник",
   "item.firstcontact.radio_receiver": "Ламповый радиоприёмник",
-  "itemGroup.firstcontact": "Первый контакт"
+  "itemGroup.firstcontact": "Первый контакт",
+  "item.firstcontact.incomplete_radio_receiver": "Незавершённый ламповый радиоприёмник"
 }

@@ -1,0 +1,7 @@
+{
+  "parent": "firstcontact:block/radio_receiver",
+  "textures": {
+    "screen": "firstcontact:block/bakelite",
+    "brass": "firstcontact:block/burnished_copper"
+  }
+}

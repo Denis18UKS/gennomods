@@ -1,20 +1,172 @@
 {
-  "type": "minecraft:crafting_shaped",
-  "category": "redstone",
-  "pattern": [
-    "BEB",
-    "TPT",
-    "BNB"
-  ],
-  "key": {
-    "B": "create:brass_casing",
-    "E": "create:electron_tube",
-    "T": "create:copper_sheet",
-    "P": "create:precision_mechanism",
-    "N": "minecraft:note_block"
+  "type": "create:sequenced_assembly",
+  "ingredient": {
+    "item": "create:brass_casing"
   },
-  "result": {
-    "id": "firstcontact:radio_receiver",
-    "count": 1
-  }
+  "transitional_item": {
+    "id": "firstcontact:incomplete_radio_receiver"
+  },
+  "loops": 1,
+  "sequence": [
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:electron_tube"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:copper_sheet"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:copper_sheet"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:pressing",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:precision_mechanism"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "minecraft:note_block"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:brass_casing"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:brass_casing"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:deploying",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        },
+        {
+          "item": "create:brass_casing"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    },
+    {
+      "type": "create:pressing",
+      "ingredients": [
+        {
+          "item": "firstcontact:incomplete_radio_receiver"
+        }
+      ],
+      "results": [
+        {
+          "id": "firstcontact:incomplete_radio_receiver"
+        }
+      ]
+    }
+  ],
+  "results": [
+    {
+      "id": "firstcontact:radio_receiver",
+      "chance": 1
+    }
+  ]
 }

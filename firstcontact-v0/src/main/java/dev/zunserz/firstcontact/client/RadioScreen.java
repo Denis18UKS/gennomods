@@ -31,6 +31,10 @@ public final class RadioScreen extends Screen {
     private String hint="Введите частоту или настройте ручку.";
     private int previousStationId=-1;
     private boolean searchPending;
+    private boolean dialDragging;
+    private double dialDragStartX;
+    private int dialDragStartFrequency;
+    private int lastDialPacketTick=-200;
 
     private RadioScreen(ContactNetwork.Snapshot state) {
         super(Component.literal("FIRST CONTACT | RADIO RECEIVER"));
@@ -41,6 +45,8 @@ public final class RadioScreen extends Screen {
     public static void receive(ContactNetwork.Snapshot packet) {
         Minecraft mc=Minecraft.getInstance();
         if(mc.screen instanceof RadioScreen radio && radio.state.pos().equals(packet.pos())) {
+            // Incoming server echoes must not yank the thumb backwards during a drag.
+            if(radio.dialDragging)return;
             boolean stationChanged=radio.state.stationId()!=packet.stationId()
                 ||radio.state.frequency()!=packet.frequency();
             radio.state=packet;
@@ -151,6 +157,76 @@ public final class RadioScreen extends Screen {
         hint="НАСТРОЙКА: "+format(freq)+" MHz";
     }
 
+    // Tuning dial is a real direct-manipulation control, not decorative artwork.
+    // Normal drag spans the whole band. Hold Shift and drag for 0.1 MHz
+    // increments per 2 screen pixels, so the 130 MHz range remains precise
+    // despite only ~278 physical GUI pixels available for the scale.
+    private boolean insideDial(double mouseX,double mouseY) {
+        int x=(width-W)/2,y=(height-H)/2;
+        return mouseX>=x+29 && mouseX<=x+W-29
+            && mouseY>=y+68 && mouseY<=y+88;
+    }
+
+    private int dialPositionToFrequency(double mouseX) {
+        int start=(width-W)/2+33;
+        int end=start+W-66;
+        double t=Math.clamp((mouseX-start)/(end-(double)start),0.0,1.0);
+        if(hasShiftDown())
+            return (int)Math.clamp(dialDragStartFrequency+
+                Math.round((mouseX-dialDragStartX)/2.0),
+                RadioSignals.MIN,RadioSignals.MAX);
+        return RadioSignals.MIN+
+            (int)Math.round(t*(RadioSignals.MAX-RadioSignals.MIN));
+    }
+
+    private void slideTo(double mouseX,boolean finalPacket) {
+        int selected=dialPositionToFrequency(mouseX);
+        if(selected!=state.frequency()){
+            state=new ContactNetwork.Snapshot(state.pos(),selected,0,0,"");
+            if(frequencyInput!=null && !frequencyInput.isFocused())
+                frequencyInput.setValue(format(selected));
+            playing=List.of();
+            elapsed=-1;
+            searchPending=false;
+            hint="НАСТРОЙКА: "+format(selected)+" MHz";
+        }
+        // Throttle movement packets, but always transmit the exact final value.
+        if(finalPacket || ticks-lastDialPacketTick>=3){
+            PacketDistributor.sendToServer(
+                new ContactNetwork.Action(state.pos(),"tune",state.frequency()));
+            lastDialPacketTick=ticks;
+        }
+    }
+
+    @Override public boolean mouseClicked(double mouseX,double mouseY,int button) {
+        if(button==0 && insideDial(mouseX,mouseY)){
+            dialDragging=true;
+            dialDragStartX=mouseX;
+            dialDragStartFrequency=state.frequency();
+            slideTo(mouseX,false);
+            return true;
+        }
+        return super.mouseClicked(mouseX,mouseY,button);
+    }
+
+    @Override public boolean mouseDragged(double mouseX,double mouseY,
+                                          int button,double dragX,double dragY) {
+        if(dialDragging && button==0){
+            slideTo(mouseX,false);
+            return true;
+        }
+        return super.mouseDragged(mouseX,mouseY,button,dragX,dragY);
+    }
+
+    @Override public boolean mouseReleased(double mouseX,double mouseY,int button) {
+        if(dialDragging && button==0){
+            slideTo(mouseX,true);
+            dialDragging=false;
+            return true;
+        }
+        return super.mouseReleased(mouseX,mouseY,button);
+    }
+
     @Override public boolean keyPressed(int keyCode,int scanCode,int modifiers) {
         // GLFW_KEY_ENTER=257, GLFW_KEY_KP_ENTER=335
         if((keyCode==257 || keyCode==335)
@@ -229,7 +305,7 @@ public final class RadioScreen extends Screen {
         ticks++;
         // A rare radio signal must be able to appear while the player watches
         // a tuned receiver, not just when re-opening the GUI.
-        if(ticks%50==0)
+        if(ticks%50==0 && !dialDragging)
             PacketDistributor.sendToServer(
                 new ContactNetwork.Action(state.pos(),"poll",0));
 
@@ -268,7 +344,11 @@ public final class RadioScreen extends Screen {
         g.fill(x+33,y+78,x+W-33,y+80,0xFF42594B);
         int markerX=x+33+(state.frequency()-RadioSignals.MIN)*(W-66)/
             (RadioSignals.MAX-RadioSignals.MIN);
-        g.fill(markerX-1,y+72,markerX+2,y+84,0xFFF8C76E);
+        // Larger high-contrast brass thumb signals that the scale can be dragged.
+        g.fill(markerX-3,y+71,markerX+4,y+86,
+            dialDragging?0xFFFFE7A7:0xFFC8944C);
+        g.fill(markerX-1,y+74,markerX+2,y+83,0xFF3D2B1D);
+
         g.drawString(font,"50",x+23,y+71,0xFF8AA999,false);
         g.drawString(font,"180",x+W-48,y+71,0xFF8AA999,false);
 
@@ -309,7 +389,9 @@ public final class RadioScreen extends Screen {
         }
 
         g.drawString(font,"ШАГ 0.1  •  ENTER",x+18,y+191,0xFFD2B37A,false);
-        String status=elapsed>=0?"► ИДЁТ ПЕРЕДАЧА":hint;
+        String status=insideDial(mouseX,mouseY)
+            ? "ЛКМ: ПЕРЕТАЩИТЬ, SHIFT: ТОЧНО"
+            :elapsed>=0?"► ИДЁТ ПЕРЕДАЧА":hint;
         g.drawString(font,font.plainSubstrByWidth(status,174),x+152,y+191,
             elapsed>=0?0xFFA8F0BD:0xFFE1B878,false);
         // Render controls exactly once, after the panel, without blur.

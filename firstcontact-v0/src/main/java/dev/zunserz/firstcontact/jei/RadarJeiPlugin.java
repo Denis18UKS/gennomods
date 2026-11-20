@@ -83,30 +83,30 @@ public final class RadarJeiPlugin implements IModPlugin {
         }
         @Override public Component getTitle(){return Component.literal("Реальный радар Create: Radars (3D)");}
         @Override public IDrawable getIcon(){return icon;}
-        @Override public int getWidth(){return 190;}
-        @Override public int getHeight(){return 188;}
+        @Override public int getWidth(){return 220;}
+        @Override public int getHeight(){return 238;}
         @Override public boolean needsRecipeBorder(){return false;}
 
         @Override public void setRecipe(IRecipeLayoutBuilder builder,RadarSchematic schematic,
                                         IFocusGroup group) {
-            builder.addSlot(RecipeIngredientRole.INPUT, 9, 164).addItemStack(item(RadarIntegration.BEARING));
-            builder.addSlot(RecipeIngredientRole.INPUT, 36, 164).addItemStack(item(RadarIntegration.RECEIVER));
-            builder.addSlot(RecipeIngredientRole.INPUT, 63, 164).addItemStack(item(RadarIntegration.PLATE));
-            builder.addSlot(RecipeIngredientRole.INPUT, 90, 164).addItemStack(item(RadarIntegration.DISH));
-            builder.addSlot(RecipeIngredientRole.INPUT, 117, 164).addItemStack(item("create:brass_casing"));
+            builder.addSlot(RecipeIngredientRole.INPUT, 12, 208).addItemStack(item(RadarIntegration.BEARING));
+            builder.addSlot(RecipeIngredientRole.INPUT, 54, 208).addItemStack(item(RadarIntegration.RECEIVER));
+            builder.addSlot(RecipeIngredientRole.INPUT, 96, 208).addItemStack(item(RadarIntegration.PLATE));
+            builder.addSlot(RecipeIngredientRole.INPUT, 138, 208).addItemStack(item(RadarIntegration.DISH));
+            builder.addSlot(RecipeIngredientRole.INPUT, 180, 208).addItemStack(item("create:brass_casing"));
         }
 
         @Override public void createRecipeExtras(IRecipeExtrasBuilder extras,
                                                  RadarSchematic recipe,IFocusGroup group) {
             extras.addInputHandler(new IJeiInputHandler() {
-                @Override public ScreenRectangle getArea(){return new ScreenRectangle(0,0,190,153);}
+                @Override public ScreenRectangle getArea(){return new ScreenRectangle(0,0,220,194);}
                 @Override public boolean handleInput(double mx,double my,IJeiUserInput input) {
                     if(input.getKey().getType()!=InputConstants.Type.MOUSE
-                      ||input.getKey().getValue()!=0 ||my<127) return false;
+                      ||input.getKey().getValue()!=0 ||my<164 || my>184) return false;
                     if(!input.isSimulate()) {
-                        if(mx<46) {layer=layer>=RadarBlueprint.maxHeight()?-1:layer+1;}
-                        else if(mx<91) {layer=-1;}
-                        else if(mx<143) {autorotate=!autorotate;}
+                        if(mx<56) {layer=layer>=RadarBlueprint.maxHeight()?-1:layer+1;}
+                        else if(mx<110) {layer=-1;}
+                        else if(mx<170) {autorotate=!autorotate;}
                         else {yaw+=45;}
                     }
                     return true;
@@ -118,7 +118,7 @@ public final class RadarJeiPlugin implements IModPlugin {
                 @Override public boolean handleMouseDragged(double mx,double my,
                       InputConstants.Key mouseKey,double dx,double dy) {
                     if(mouseKey.getType()!=InputConstants.Type.MOUSE
-                      ||mouseKey.getValue()!=0 ||my>127) return false;
+                      ||mouseKey.getValue()!=0 ||my>159) return false;
                     yaw+=(float)dx*1.4f;
                     pitch=Math.clamp(pitch+(float)dy*.9f,-60f,65f);
                     autorotate=false;
@@ -130,24 +130,26 @@ public final class RadarJeiPlugin implements IModPlugin {
         @Override public void draw(RadarSchematic schematic,
                      mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
                      GuiGraphics g,double mouseX,double mouseY) {
-            g.fill(0,0,190,157,0xFF172226);
-            g.renderOutline(0,0,190,157,0xFFB69A5E);
-            g.drawString(Minecraft.getInstance().font,"RADAR CONTROL / Ø13",7,6,0xFFEDCEA0,false);
+            g.fill(0,0,220,162,0xFF172226);
+            g.renderOutline(0,0,220,162,0xFFB69A5E);
+            g.drawString(Minecraft.getInstance().font,"CREATE: RADARS  /  3D  Ø13",7,6,0xFFEDCEA0,false);
             String desc="Схема: " + MODEL.size() + " блоков / проверяется сервером";
-            g.drawString(Minecraft.getInstance().font,desc,6,16,0xFF9BBDB0,false);
-            drawButtons(g);
+            g.drawString(Minecraft.getInstance().font,
+                Minecraft.getInstance().font.plainSubstrByWidth(desc,207),
+                7,17,0xFF9BBDB0,false);
             if(!BuiltInRegistries.BLOCK.containsKey(ResourceLocation.parse(RadarIntegration.BEARING))) {
+                drawButtons(g);
                 g.drawCenteredString(Minecraft.getInstance().font,
-                   "Установите Create: Radars",95,66,0xFFFF8C75);
+                   "Установите Create: Radars",110,74,0xFFFF8C75);
                 return;
             }
             PoseStack pose=g.pose();
             pose.pushPose();
-            pose.translate(95,102,270);
+            pose.translate(110,111,270);
             pose.mulPose(Axis.XP.rotationDegrees(pitch));
             pose.mulPose(Axis.YP.rotationDegrees(
                 yaw+(autorotate?(float)((System.currentTimeMillis()/75L)%360):0)));
-            pose.scale(4.5f*zoom,-4.5f*zoom,4.5f*zoom);
+            pose.scale(7.3f*zoom,-7.3f*zoom,7.3f*zoom);
             pose.translate(-.5,-3.0,-.5);
             var mc=Minecraft.getInstance();
             var buffers=mc.renderBuffers().bufferSource();
@@ -165,29 +167,42 @@ public final class RadarJeiPlugin implements IModPlugin {
             }
             buffers.endBatch();
             pose.popPose();
+            // Draw UI on top of the 3D model, not behind its depth buffer.
+            drawButtons(g);
+            g.drawString(mc.font,"ЛКМ+двигать: вращение   •   колесо: масштаб",5,188,0xFF9DA8A1,false);
+            g.drawString(mc.font,"МАТЕРИАЛЫ (количество под иконкой)",5,198,0xFFD1B47C,false);
+            String[] materials={
+                RadarIntegration.BEARING,RadarIntegration.RECEIVER,
+                RadarIntegration.PLATE,RadarIntegration.DISH,"create:brass_casing"
+            };
+            int[] positions={20,62,104,146,188};
+            for(int i=0;i<materials.length;i++)
+                g.drawCenteredString(mc.font,"x"+count.getOrDefault(materials[i],0),
+                    positions[i],228,0xFFF1D59F);
         }
         private void drawButtons(GuiGraphics g){
-            String[] captions={"СЛОЙ "+(layer<0?"ВСЕ":layer),"ВСЕ","АВТО "+(autorotate?"ON":"OFF"),"↻ 45°"};
-            int[] starts={4,48,93,145};int[] ends={46,91,143,186};
+            String[] captions={"СЛОЙ "+(layer<0?"ВСЕ":layer),"ВСЕ СЛОИ","АВТО "+(autorotate?"ON":"OFF"),"↻ 45°"};
+            int[] starts={4,57,111,171};int[] ends={55,109,169,215};
             for(int i=0;i<captions.length;i++){
-                g.fill(starts[i],130,ends[i],149,0xFF493529);
-                g.renderOutline(starts[i],130,ends[i]-starts[i],19,0xFFD0A769);
+                g.fill(starts[i],164,ends[i],184,0xFF493529);
+                g.renderOutline(starts[i],164,ends[i]-starts[i],20,0xFFD0A769);
                 g.drawCenteredString(Minecraft.getInstance().font,captions[i],
-                      (starts[i]+ends[i])/2,136,0xFFE9D6A7);
+                      (starts[i]+ends[i])/2,170,0xFFE9D6A7);
             }
-            g.drawString(Minecraft.getInstance().font,"ЛКМ+двигать: вращать  •  колесо: масштаб",
-                3,151,0xFF9DA8A1,false);
+            // Hint is drawn after the 3D mesh, see draw().
+
         }
         @Override public void getTooltip(ITooltipBuilder tooltip,RadarSchematic schematic,
                      mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
                      double mx,double my) {
-            if(my>126)return;
+            if(my>158)return;
             tooltip.add(Component.literal("Точная схема: /firstcontact radar check"));
             tooltip.add(Component.literal("Radar Bearing: "+count.getOrDefault(RadarIntegration.BEARING,0)
                      +" / Receiver: "+count.getOrDefault(RadarIntegration.RECEIVER,0)));
             tooltip.add(Component.literal("Dish: "+count.getOrDefault(RadarIntegration.DISH,0)
                      +" / Plate: "+count.getOrDefault(RadarIntegration.PLATE,0)));
             tooltip.add(Component.literal("Полная схема: " + MODEL.size() + " блоков / высота 6"));
+            tooltip.add(Component.literal("Нижний слой: 0. Кнопка СЛОЙ показывает до указанной высоты."));
             tooltip.add(Component.literal("Соедини всю тарелку Super Glue из Create."));
             tooltip.add(Component.literal("Отдельный чеклист по слоям: ЛКМ на СЛОЙ."));
             tooltip.add(Component.literal("Привяжи: /firstcontact radar link"));

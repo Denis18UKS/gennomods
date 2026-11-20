@@ -76,6 +76,10 @@ public final class FirstContact {
             .strength(2.8F).sound(SoundType.WOOD).noOcclusion()));
     public static final DeferredItem<BlockItem> RADIO_ITEM = ITEMS.register("radio_receiver",
         () -> new BlockItem(RADIO.get(), new Item.Properties()));
+    // Real intermediate item for Create Sequenced Assembly, not a fake JEI recipe.
+    // Create itself tracks the step/progress in its SEQUENCED_ASSEMBLY data component.
+    public static final DeferredItem<Item> INCOMPLETE_RADIO = ITEMS.register("incomplete_radio_receiver",
+        () -> new Item(new Item.Properties()));
 
     private long serverTicks;
 
