@@ -104,9 +104,11 @@ public final class FirstContact {
     public static void sendRadio(ServerPlayer player, BlockPos pos) {
         if (!player.serverLevel().getBlockState(pos).is(RADIO.get())) return;
         Story story = Story.of(player.serverLevel());
+        int frequency = story.getFrequency(player.serverLevel(), pos);
+        RadioSignals.Reception reception =
+            RadioSignals.receive(player.serverLevel(), frequency, story.messageReady);
         PacketDistributor.sendToPlayer(player, new ContactNetwork.Snapshot(pos,
-            story.messageReady, story.messageRead,
-            story.getFrequency(player.serverLevel(), pos)));
+            frequency, reception.stationId(), reception.strength()));
     }
 
     private void commands(RegisterCommandsEvent event) {
@@ -308,7 +310,7 @@ public final class FirstContact {
             return frequencies.getOrDefault(key(level,pos), 987);
         }
         public void setFrequency(ServerLevel level, BlockPos pos, int value) {
-            frequencies.put(key(level,pos), Math.clamp(value, 880, 1080));
+            frequencies.put(key(level,pos), Math.clamp(value, RadioSignals.MIN, RadioSignals.MAX));
             setDirty();
         }
         @Override public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
