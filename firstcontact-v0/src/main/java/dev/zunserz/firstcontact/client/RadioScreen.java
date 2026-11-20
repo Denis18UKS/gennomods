@@ -96,7 +96,7 @@ public final class RadioScreen extends Screen {
         addRenderableWidget(new BrassButton(x+17,y+167,129,21,
             Component.literal("ПРОСЛУШАТЬ"),this::play));
         addRenderableWidget(new BrassButton(x+152,y+167,52,21,
-            Component.literal("FM"),()->tune(880)));
+            Component.literal("КОПИЯ"),this::copyMorse));
         addRenderableWidget(new BrassButton(x+209,y+167,52,21,
             Component.literal("ПОИСК"),this::scan));
         addRenderableWidget(new BrassButton(x+266,y+167,61,21,
@@ -117,6 +117,16 @@ public final class RadioScreen extends Screen {
         setFocused(null);
     }
 
+    private void copyMorse() {
+        if(state.morse().isEmpty()) {
+            hint="НЕТ ЗАПИСИ ДЛЯ КОПИРОВАНИЯ";
+            return;
+        }
+        // Only raw dots/dashes. No translation or coordinates in plaintext.
+        Minecraft.getInstance().keyboardHandler.setClipboard(state.morse());
+        hint="АЗБУКА МОРЗЕ СКОПИРОВАНА БЕЗ РАСШИФРОВКИ";
+    }
+
     private void scan() {
         searchPending=true;
         elapsed=-1;
@@ -133,7 +143,7 @@ public final class RadioScreen extends Screen {
         }
         PacketDistributor.sendToServer(
             new ContactNetwork.Action(state.pos(),"tune",freq));
-        state=new ContactNetwork.Snapshot(state.pos(),freq,0,0);
+        state=new ContactNetwork.Snapshot(state.pos(),freq,0,0,"");
         if(frequencyInput!=null)frequencyInput.setValue(format(freq));
         elapsed=-1;
         playing=List.of();
@@ -172,7 +182,7 @@ public final class RadioScreen extends Screen {
         } else {
             RadioSignals.Station station=RadioSignals.byId(state.stationId());
             int speed=station==null?2:station.speed();
-            playing=sequence(RadioSignals.morseForId(state.stationId()),
+            playing=sequence(state.morse(),
                 speed==1?5:(speed==3?2:3));
             hint=state.stationId()==RadioSignals.STORY_ID
                 ? "АРХИВ / ЗАПИСЬ НЕИЗВЕСТНОГО ИСТОЧНИКА"
@@ -276,6 +286,7 @@ public final class RadioScreen extends Screen {
             case "TELEMETRY" -> "ТЕЛЕМЕТРИЯ";
             case "SATELLITE" -> "ОРБИТАЛЬНЫЙ СИГНАЛ";
             case "ANOMALY" -> "АНОМАЛЬНЫЙ СИГНАЛ";
+            case "COORDINATES" -> "ЦИФРОВОЙ ПАКЕТ ДАННЫХ";
             default -> "НЕИЗВЕСТНЫЙ СИГНАЛ";
         };
         g.drawString(font,
@@ -284,7 +295,7 @@ public final class RadioScreen extends Screen {
             x+36,y+99,signal?0xFFF3C987:0xFFAAA096,false);
 
         if(signal) {
-            String raw=RadioSignals.morseForId(state.stationId());
+            String raw=state.morse();
             // Raw dots and dashes are NOT deciphered; the player must listen
             // and solve the messages outside the game.
             String tape=font.plainSubstrByWidth(raw,W-60);

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.zunserz.firstcontact.FirstContact;
+import dev.zunserz.firstcontact.RadarBlueprint;
 import dev.zunserz.firstcontact.RadarIntegration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,36 +64,23 @@ public final class RadarJeiPlugin implements IModPlugin {
             reg.addRecipeCatalyst(item(RadarIntegration.BEARING), TYPE);
     }
 
-    private record Part(int x,int y,int z,String block) {}
-    private static final List<Part> MODEL = makeModel();
-    private static List<Part> makeModel() {
-        List<Part> list = new ArrayList<>();
-        list.add(new Part(0,0,0,RadarIntegration.BEARING));
-        list.add(new Part(0,1,0,"create:brass_casing"));
-        list.add(new Part(0,2,0,RadarIntegration.RECEIVER));
-        for (int x=-6;x<=6;x++) for(int z=-6;z<=6;z++) {
-            double r=Math.hypot(x,z);
-            if (r>6.2) continue;
-            int y = r>=5.2?5:r>=3.9?4:3;
-            // Radar receiver must touch the moving assembly, and radar panels
-            // are the real radar parts counted by RadarBearingBlockEntity.
-            list.add(new Part(x,y,z,r>=4.4?RadarIntegration.DISH:RadarIntegration.PLATE));
-            if (r>=5.65) list.add(new Part(x,y+1,z,RadarIntegration.DISH));
-        }
-        return List.copyOf(list);
-    }
+    // Actual build plan shared by JEI, server-side checklist and material counts.
+    private static final List<RadarBlueprint.Part> MODEL = RadarBlueprint.parts();
 
     private static final class RadarCategory implements IRecipeCategory<RadarSchematic> {
         private final IDrawable icon;
         private float yaw=30,pitch=24,zoom=1.0f;
         private int layer=-1;
         private boolean autorotate=true;
-        private final Map<String,Integer> count = new HashMap<>();
+        private final Map<String,Integer> count = RadarBlueprint.materials();
         RadarCategory(IGuiHelper helper) {
             icon=helper.createDrawableItemStack(item(RadarIntegration.BEARING));
-            for(Part p:MODEL)count.merge(p.block(),1,Integer::sum);
+
         }
         @Override public RecipeType<RadarSchematic> getRecipeType(){return TYPE;}
+        @Override public ResourceLocation getRegistryName(RadarSchematic recipe) {
+            return ResourceLocation.fromNamespaceAndPath(FirstContact.ID, "radar_multiblock_blueprint");
+        }
         @Override public Component getTitle(){return Component.literal("Реальный радар Create: Radars (3D)");}
         @Override public IDrawable getIcon(){return icon;}
         @Override public int getWidth(){return 190;}
@@ -116,7 +104,7 @@ public final class RadarJeiPlugin implements IModPlugin {
                     if(input.getKey().getType()!=InputConstants.Type.MOUSE
                       ||input.getKey().getValue()!=0 ||my<127) return false;
                     if(!input.isSimulate()) {
-                        if(mx<46) {layer=(layer+2)%9-1;} // cycle -1,1,2,..7
+                        if(mx<46) {layer=layer>=RadarBlueprint.maxHeight()?-1:layer+1;}
                         else if(mx<91) {layer=-1;}
                         else if(mx<143) {autorotate=!autorotate;}
                         else {yaw+=45;}
@@ -145,7 +133,7 @@ public final class RadarJeiPlugin implements IModPlugin {
             g.fill(0,0,190,157,0xFF172226);
             g.renderOutline(0,0,190,157,0xFFB69A5E);
             g.drawString(Minecraft.getInstance().font,"RADAR CONTROL / Ø13",7,6,0xFFEDCEA0,false);
-            String desc="Create: Radars • рабочий Radar Bearing";
+            String desc="Схема: " + MODEL.size() + " блоков / проверяется сервером";
             g.drawString(Minecraft.getInstance().font,desc,6,16,0xFF9BBDB0,false);
             drawButtons(g);
             if(!BuiltInRegistries.BLOCK.containsKey(ResourceLocation.parse(RadarIntegration.BEARING))) {
@@ -163,7 +151,7 @@ public final class RadarJeiPlugin implements IModPlugin {
             pose.translate(-.5,-3.0,-.5);
             var mc=Minecraft.getInstance();
             var buffers=mc.renderBuffers().bufferSource();
-            for(Part part:MODEL) {
+            for(RadarBlueprint.Part part:MODEL) {
                 if(layer>=0 && part.y()>layer)continue;
                 ResourceLocation id=ResourceLocation.parse(part.block());
                 if(!BuiltInRegistries.BLOCK.containsKey(id))continue;
@@ -194,12 +182,14 @@ public final class RadarJeiPlugin implements IModPlugin {
                      mezz.jei.api.gui.ingredient.IRecipeSlotsView slots,
                      double mx,double my) {
             if(my>126)return;
-            tooltip.add(Component.literal("Настоящие детали Create: Radars — пример компоновки"));
+            tooltip.add(Component.literal("Точная схема: /firstcontact radar check"));
             tooltip.add(Component.literal("Radar Bearing: "+count.getOrDefault(RadarIntegration.BEARING,0)
                      +" / Receiver: "+count.getOrDefault(RadarIntegration.RECEIVER,0)));
             tooltip.add(Component.literal("Dish: "+count.getOrDefault(RadarIntegration.DISH,0)
                      +" / Plate: "+count.getOrDefault(RadarIntegration.PLATE,0)));
-            tooltip.add(Component.literal("Все части должны соединиться; в Create: Radars нужен Receiver."));
+            tooltip.add(Component.literal("Полная схема: " + MODEL.size() + " блоков / высота 6"));
+            tooltip.add(Component.literal("Соедини всю тарелку Super Glue из Create."));
+            tooltip.add(Component.literal("Отдельный чеклист по слоям: ЛКМ на СЛОЙ."));
             tooltip.add(Component.literal("Привяжи: /firstcontact radar link"));
         }
     }

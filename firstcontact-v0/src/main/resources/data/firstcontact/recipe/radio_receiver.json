@@ -2,16 +2,16 @@
   "type": "minecraft:crafting_shaped",
   "category": "redstone",
   "pattern": [
-    "BCB",
-    "RMR",
-    "BIB"
+    "BEB",
+    "TPT",
+    "BNB"
   ],
   "key": {
     "B": "create:brass_casing",
-    "C": "minecraft:copper_ingot",
-    "R": "minecraft:redstone",
-    "M": "minecraft:note_block",
-    "I": "minecraft:iron_ingot"
+    "E": "create:electron_tube",
+    "T": "create:copper_sheet",
+    "P": "create:precision_mechanism",
+    "N": "minecraft:note_block"
   },
   "result": {
     "id": "firstcontact:radio_receiver",

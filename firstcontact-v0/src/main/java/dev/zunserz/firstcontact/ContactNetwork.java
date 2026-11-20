@@ -32,7 +32,7 @@ public final class ContactNetwork {
 
     /** stationId 0 means no reception; 99 means recorded first-contact story. */
     public record Snapshot(BlockPos pos, int frequency,
-                           int stationId, int signalStrength)
+                           int stationId, int signalStrength, String morse)
             implements CustomPacketPayload {
         public static final Type<Snapshot> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(FirstContact.ID, "radio_snapshot"));
@@ -42,13 +42,14 @@ public final class ContactNetwork {
                 buf.writeVarInt(p.frequency());
                 buf.writeVarInt(p.stationId());
                 buf.writeVarInt(p.signalStrength());
+                buf.writeUtf(p.morse(),2048);
             },buf -> new Snapshot(buf.readBlockPos(),buf.readVarInt(),
-                buf.readVarInt(),buf.readVarInt()));
+                buf.readVarInt(),buf.readVarInt(),buf.readUtf(2048)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar=event.registrar("2");
+        PayloadRegistrar registrar=event.registrar("3");
         registrar.playToServer(Action.TYPE,Action.CODEC,(packet,context) ->
             context.enqueueWork(() -> {
                 if (!(context.player() instanceof ServerPlayer player)) return;

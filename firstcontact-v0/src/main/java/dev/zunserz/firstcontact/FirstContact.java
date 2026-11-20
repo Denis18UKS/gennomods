@@ -30,6 +30,10 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.feature.configurations.NoneFeatureConfiguration;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import java.util.List;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
@@ -51,6 +55,10 @@ public final class FirstContact {
     public static final String ID = "firstcontact";
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(ID);
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(ID);
+    public static final DeferredRegister<Feature<?>> FEATURES = DeferredRegister.create(Registries.FEATURE, ID);
+    public static final DeferredHolder<Feature<?>, ForgottenWorkshopFeature> FORGOTTEN_WORKSHOP =
+        FEATURES.register("forgotten_workshop",
+            () -> new ForgottenWorkshopFeature(NoneFeatureConfiguration.CODEC));
     public static final DeferredRegister<SoundEvent> SOUNDS =
         DeferredRegister.create(Registries.SOUND_EVENT, ID);
     public static final DeferredHolder<SoundEvent, SoundEvent> MORSE_DOT =
@@ -74,10 +82,12 @@ public final class FirstContact {
     public FirstContact(IEventBus bus) {
         BLOCKS.register(bus);
         ITEMS.register(bus);
+        FEATURES.register(bus);
         SOUNDS.register(bus);
         bus.addListener(ContactNetwork::register);
         NeoForge.EVENT_BUS.addListener(this::commands);
         NeoForge.EVENT_BUS.addListener(this::tick);
+        NeoForge.EVENT_BUS.addListener(this::serverStarting);
     }
 
     public static final class RadioBlock extends HorizontalDirectionalBlock {
@@ -101,6 +111,10 @@ public final class FirstContact {
         }
     }
 
+    private void serverStarting(ServerStartingEvent event) {
+        MarketCompatibility.ensureBlocked();
+    }
+
     public static void sendRadio(ServerPlayer player, BlockPos pos) {
         if (!player.serverLevel().getBlockState(pos).is(RADIO.get())) return;
         Story story = Story.of(player.serverLevel());
@@ -108,7 +122,8 @@ public final class FirstContact {
         RadioSignals.Reception reception =
             RadioSignals.receive(player.serverLevel(), frequency, story.messageReady);
         PacketDistributor.sendToPlayer(player, new ContactNetwork.Snapshot(pos,
-            frequency, reception.stationId(), reception.strength()));
+            frequency, reception.stationId(), reception.strength(),
+            RadioSignals.morseForId(reception.stationId(),player.serverLevel().getSeed())));
     }
 
     private void commands(RegisterCommandsEvent event) {
@@ -127,6 +142,39 @@ public final class FirstContact {
         var radar = Commands.literal("radar");
         radar.then(Commands.literal("link").executes(ctx -> linkRadar(ctx.getSource().getPlayerOrException())));
         radar.then(Commands.literal("calibrate").executes(ctx -> linkRadar(ctx.getSource().getPlayerOrException())));
+        radar.then(Commands.literal("check").executes(ctx -> {
+            ServerPlayer player=ctx.getSource().getPlayerOrException();
+            BlockPos bearing=RadarIntegration.findNearby(player.serverLevel(),player.blockPosition());
+            if(bearing==null){
+                player.sendSystemMessage(Component.literal("Нет Radar Bearing поблизости. Установи центральный блок."));
+                return 0;
+            }
+            RadarIntegration.Status actual=RadarIntegration.probe(player.serverLevel(),bearing);
+            if(actual.assembled()){
+                player.sendSystemMessage(Component.literal(
+                    "Радар уже собран Create: Radars. Проверка активной сборки: /firstcontact radar link"));
+                return 1;
+            }
+            List<RadarBlueprint.Part> missing=RadarBlueprint.missing(player.serverLevel(),bearing);
+            if(missing.isEmpty()){
+                player.sendSystemMessage(Component.literal(
+                    "Схема JEI совпадает! Теперь склей тарелку Super Glue и запускай Radar Bearing."));
+            } else {
+                RadarBlueprint.Part first=missing.getFirst();
+                player.sendSystemMessage(Component.literal(
+                    "Схема: отсутствует "+missing.size()+" из "+RadarBlueprint.parts().size()
+                    +". Первый: "+first.block()+" смещение X="+first.x()
+                    +" Y="+first.y()+" Z="+first.z()+" от Radar Bearing."));
+            }
+            return missing.size();
+        }));
+        radar.then(Commands.literal("blueprint").executes(ctx -> {
+            Map<String,Integer> materials=RadarBlueprint.materials();
+            ctx.getSource().sendSuccess(() -> Component.literal(
+                "Схема радара JEI: "+RadarBlueprint.parts().size()+" блоков, Ø13, высота 6."
+                +" Материалы: "+materials+". Для проверки: /firstcontact radar check"),false);
+            return 1;
+        }));
         radar.then(Commands.literal("test_motion").requires(src -> src.hasPermission(2))
             .executes(ctx -> {
                 Story s = Story.of(ctx.getSource().getLevel());

@@ -51,7 +51,17 @@ public final class RadioSignals {
         station(14, 1420, 12, 2, "Lunar echo",        "ANOMALY",   "DO NOT LAND"),
         station(15, 1516,  8, 2, "Deep-space relay",  "ANOMALY",   "WE SEE YOU"),
         station(16, 1682,  4, 1, "Unknown space",     "UNKNOWN",   "DO NOT FOLLOW"),
-        station(17, 1749,  2, 1, "Uncharted source",  "UNKNOWN",   "THE GATE OPENS")
+        station(17, 1749,  2, 1, "Uncharted source",  "UNKNOWN",   "THE GATE OPENS"),
+        // Eight mysterious expedition coordinates. The actual X/Z values depend
+        // on the current world's seed and are encoded into Morse on the SERVER.
+        station(18,  524, 44, 2, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(19,  667, 31, 2, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(20,  807, 26, 1, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(21,  854, 18, 3, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(22,  974, 37, 2, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(23, 1131, 15, 1, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(24, 1314,  9, 2, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO"),
+        station(25, 1619,  5, 1, "Unknown relay",    "COORDINATES", "X ZERO Z ZERO")
     );
 
     /**
@@ -140,8 +150,11 @@ public final class RadioSignals {
         return out.toString();
     }
 
-    public static String morseForId(int id) {
-        if (id == STORY_ID) return "... - --- .--.";  // original story warning
+    /** The server alone knows the coordinates. The client receives only CW. */
+    public static String morseForId(int id, long worldSeed) {
+        if (id == STORY_ID) return "... - --- .--.";
+        if (ExpeditionSites.indexForStation(id) >= 0)
+            return encode(ExpeditionSites.encodedClue(worldSeed,id));
         Station station = byId(id);
         return station == null ? "" : station.morse();
     }
