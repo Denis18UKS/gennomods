@@ -64,6 +64,11 @@ public final class ContactNetwork {
                                 || packet.frequency() > RadioSignals.MAX) return;
                         story.setFrequency(player.serverLevel(),packet.pos(),packet.frequency());
                     }
+                    case "scan" -> {
+                        int current=story.getFrequency(player.serverLevel(),packet.pos());
+                        int found=RadioSignals.scan(player.serverLevel(),current,story.messageReady);
+                        story.setFrequency(player.serverLevel(),packet.pos(),found);
+                    }
                     case "poll" -> { /* read-only refresh while GUI is open */ }
                     default -> { return; }
                 }

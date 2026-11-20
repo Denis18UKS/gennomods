@@ -30,6 +30,7 @@ public final class RadioScreen extends Screen {
     private int ticks;
     private String hint="Введите частоту или настройте ручку.";
     private int previousStationId=-1;
+    private boolean searchPending;
 
     private RadioScreen(ContactNetwork.Snapshot state) {
         super(Component.literal("FIRST CONTACT | RADIO RECEIVER"));
@@ -48,6 +49,12 @@ public final class RadioScreen extends Screen {
                 radio.playing=List.of();
                 radio.previousStationId=packet.stationId();
                 radio.hint=packet.stationId()>0?"ПЕРЕДАЧА В ЭФИРЕ":"ПОМЕХИ / ПУСТОЙ КАНАЛ";
+            }
+            if(radio.searchPending) {
+                radio.searchPending=false;
+                radio.hint=packet.stationId()>0
+                    ? "ПОИСК: АКТИВНАЯ ВОЛНА НАЙДЕНА"
+                    : "ПОИСК: ПЕРЕДАЧИ ПОКА НЕ НАЙДЕНЫ";
             }
             if(radio.frequencyInput!=null && !radio.frequencyInput.isFocused())
                 radio.frequencyInput.setValue(format(packet.frequency()));
@@ -91,7 +98,7 @@ public final class RadioScreen extends Screen {
         addRenderableWidget(new BrassButton(x+152,y+167,52,21,
             Component.literal("FM"),()->tune(880)));
         addRenderableWidget(new BrassButton(x+209,y+167,52,21,
-            Component.literal("VHF"),()->tune(1200)));
+            Component.literal("ПОИСК"),this::scan));
         addRenderableWidget(new BrassButton(x+266,y+167,61,21,
             Component.literal("КОСМОС"),()->tune(1400)));
 
@@ -110,6 +117,14 @@ public final class RadioScreen extends Screen {
         setFocused(null);
     }
 
+    private void scan() {
+        searchPending=true;
+        elapsed=-1;
+        playing=List.of();
+        hint="СКАНИРОВАНИЕ ВОЛН...";
+        PacketDistributor.sendToServer(new ContactNetwork.Action(state.pos(),"scan",0));
+    }
+
     private void tune(int value) {
         int freq=Math.clamp(value,RadioSignals.MIN,RadioSignals.MAX);
         if(freq==state.frequency()) {
@@ -122,7 +137,8 @@ public final class RadioScreen extends Screen {
         if(frequencyInput!=null)frequencyInput.setValue(format(freq));
         elapsed=-1;
         playing=List.of();
-        hint="СКАНИРОВАНИЕ: "+format(freq)+" MHz";
+        searchPending=false;
+        hint="НАСТРОЙКА: "+format(freq)+" MHz";
     }
 
     @Override public boolean keyPressed(int keyCode,int scanCode,int modifiers) {
@@ -251,8 +267,19 @@ public final class RadioScreen extends Screen {
         boolean plot=state.stationId()==RadioSignals.STORY_ID;
         int led=signal &&ticks%32<22 ? 0xFF75DB9C:0xFF6A614E;
         g.fill(x+25,y+101,x+29,y+105,led);
+        RadioSignals.Station found=RadioSignals.byId(state.stationId());
+        String classification=found==null?"НЕИЗВЕСТНЫЙ ИСТОЧНИК":switch(found.type()) {
+            case "BEACON" -> "МАЯЧНЫЙ СИГНАЛ";
+            case "BROADCAST" -> "РАДИОВЕЩАНИЕ";
+            case "NUMBERS" -> "ЧИСЛОВАЯ СТАНЦИЯ";
+            case "DISTRESS" -> "ТРЕВОЖНАЯ ПЕРЕДАЧА";
+            case "TELEMETRY" -> "ТЕЛЕМЕТРИЯ";
+            case "SATELLITE" -> "ОРБИТАЛЬНЫЙ СИГНАЛ";
+            case "ANOMALY" -> "АНОМАЛЬНЫЙ СИГНАЛ";
+            default -> "НЕИЗВЕСТНЫЙ СИГНАЛ";
+        };
         g.drawString(font,
-            signal?(plot?"ЗАПИСЬ: НЕИЗВЕСТНЫЙ ИСТОЧНИК":"ПЕРЕХВАЧЕНА ПЕРЕДАЧА")
+            signal?(plot?"ЗАПИСЬ: НЕИЗВЕСТНЫЙ ИСТОЧНИК":classification)
                   :"ЭФИР: ПОМЕХИ / ОЖИДАНИЕ",
             x+36,y+99,signal?0xFFF3C987:0xFFAAA096,false);
 

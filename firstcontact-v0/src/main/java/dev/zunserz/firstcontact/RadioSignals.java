@@ -54,6 +54,27 @@ public final class RadioSignals {
         station(17, 1749,  2, 1, "Uncharted source",  "UNKNOWN",   "THE GATE OPENS")
     );
 
+    /**
+     * Find the next station that actually has a signal in this time window.
+     * Do not expose the complete frequency list in-game. Search wraps around.
+     */
+    public static int scan(ServerLevel level,int current,boolean storyReady) {
+        int after=Integer.MAX_VALUE;
+        int before=Integer.MAX_VALUE;
+        for(Station station:STATIONS) {
+            if(receive(level,station.frequency(),storyReady).stationId()==0)continue;
+            if(station.frequency()>current)after=Math.min(after,station.frequency());
+            before=Math.min(before,station.frequency());
+        }
+        if(storyReady) {
+            if(FIRST_CONTACT>current)after=Math.min(after,FIRST_CONTACT);
+            before=Math.min(before,FIRST_CONTACT);
+        }
+        if(after!=Integer.MAX_VALUE)return after;
+        if(before!=Integer.MAX_VALUE)return before;
+        return current;
+    }
+
     public static Station byId(int id) {
         for (Station station : STATIONS) if (station.id() == id) return station;
         return null;
